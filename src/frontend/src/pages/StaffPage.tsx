@@ -748,8 +748,73 @@ function OrdersTab() {
   );
 }
 
-// ---- PAYMENT SETTING FIELD ----
-function PaymentSettingField({
+// ---- ADDRESS FIELD (single-line Input) ----
+function AddressField({
+  method,
+  label,
+  placeholder,
+}: { method: string; label: string; placeholder: string }) {
+  const { data: current, isLoading } = useGetPaymentInstructions(method);
+  const setInstructions = useSetPaymentInstructions();
+  const [value, setValue] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (current !== undefined) setValue(current);
+  }, [current]);
+
+  const handleSave = async () => {
+    try {
+      await setInstructions.mutateAsync({ method, instructions: value });
+      setSaved(true);
+      toast.success("Saved!");
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label className="font-medium text-sm">{label}</Label>
+      {isLoading ? (
+        <Skeleton className="h-10 w-full" />
+      ) : (
+        <div className="flex gap-2">
+          <Input
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setSaved(false);
+            }}
+            placeholder={placeholder}
+            className="font-mono text-sm"
+            data-ocid={`staff.payment.${method}.input`}
+          />
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={setInstructions.isPending}
+            variant={saved ? "outline" : "default"}
+            className="flex-shrink-0"
+            data-ocid={`staff.payment.${method}.save_button`}
+          >
+            {setInstructions.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : saved ? (
+              "Saved ✓"
+            ) : (
+              "Save"
+            )}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- INSTRUCTIONS FIELD (multi-line Textarea) ----
+function InstructionsField({
   method,
   label,
 }: { method: string; label: string }) {
@@ -766,7 +831,7 @@ function PaymentSettingField({
     try {
       await setInstructions.mutateAsync({ method, instructions: value });
       setSaved(true);
-      toast.success(`${label} instructions saved!`);
+      toast.success("Saved!");
       setTimeout(() => setSaved(false), 2000);
     } catch (e: any) {
       toast.error(e?.message || "Failed to save");
@@ -775,14 +840,17 @@ function PaymentSettingField({
 
   return (
     <div className="space-y-2">
-      <Label className="font-medium">{label}</Label>
+      <Label className="font-medium text-sm">{label}</Label>
       {isLoading ? (
         <Skeleton className="h-20 w-full" />
       ) : (
         <Textarea
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={`Enter payment instructions for ${label}...`}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setSaved(false);
+          }}
+          placeholder={`Enter redemption instructions for ${label}...`}
           rows={3}
           data-ocid={`staff.payment.${method}.textarea`}
         />
@@ -811,30 +879,68 @@ function PaymentSettingField({
 
 // ---- PAYMENT SETTINGS TAB ----
 function PaymentSettingsTab() {
-  const methods = [
-    { key: "bitcoin", label: "Bitcoin" },
-    { key: "ethereum", label: "Ethereum" },
-    { key: "amazon_gift_card", label: "Amazon Gift Card" },
-    { key: "paypal", label: "PayPal" },
-    { key: "nexus_bank", label: "Nexus Bank" },
-  ];
-
   return (
     <div className="space-y-6">
-      <h2 className="font-display text-xl font-semibold">
-        Payment Instructions
-      </h2>
-      <p className="text-sm text-muted-foreground">
-        Set the payment instructions shown to buyers for each method.
-      </p>
-      <div className="space-y-6">
-        {methods.map((m, i) => (
-          <div key={m.key}>
-            <PaymentSettingField method={m.key} label={m.label} />
-            {i < methods.length - 1 && <Separator className="mt-6" />}
-          </div>
-        ))}
+      <div>
+        <h2 className="font-display text-xl font-semibold">Payment Settings</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Add your receiving addresses and usernames. Buyers will see these at
+          checkout so they know where to send payment.
+        </p>
       </div>
+
+      {/* Crypto addresses */}
+      <Card className="bg-card/60 border-border">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Cryptocurrency
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <AddressField
+            method="bitcoin"
+            label="Your Bitcoin Address (buyers will send payments here)"
+            placeholder="e.g. bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
+          />
+          <Separator />
+          <AddressField
+            method="ethereum"
+            label="Your Ethereum Address (buyers will send payments here)"
+            placeholder="e.g. 0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
+          />
+        </CardContent>
+      </Card>
+
+      {/* PayPal */}
+      <Card className="bg-card/60 border-border">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            PayPal
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AddressField
+            method="paypal"
+            label="Your PayPal Username (buyers will send money to this account)"
+            placeholder="e.g. @yourpaypaltag"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Amazon Gift Cards */}
+      <Card className="bg-card/60 border-border">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Amazon Gift Card
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <InstructionsField
+            method="amazon_gift_card"
+            label="Redemption Instructions (shown to buyers after payment)"
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

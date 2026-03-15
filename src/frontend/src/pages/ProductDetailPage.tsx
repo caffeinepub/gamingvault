@@ -1,4 +1,3 @@
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +9,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CheckCircle,
+  Copy,
   Gamepad2,
   Loader2,
   ShoppingCart,
@@ -33,39 +33,50 @@ const PAYMENT_METHODS = [
   {
     key: "bitcoin",
     label: "Bitcoin",
-    placeholder: "Your Bitcoin wallet address",
     icon: "\u20BF",
+    refLabel: "Your Bitcoin Transaction ID / Proof of Payment",
+    refPlaceholder: "Paste your transaction ID or screenshot reference",
+    comingSoon: false,
   },
   {
     key: "ethereum",
     label: "Ethereum",
-    placeholder: "Your Ethereum wallet address (0x...)",
     icon: "\u039E",
+    refLabel: "Your Ethereum Transaction ID / Proof of Payment",
+    refPlaceholder: "Paste your transaction hash (0x...)",
+    comingSoon: false,
   },
   {
     key: "amazon_gift_card",
     label: "Amazon Gift Card",
-    placeholder: "Gift card code",
     icon: "\uD83C\uDF81",
+    refLabel: "Gift Card Code",
+    refPlaceholder: "Enter your Amazon Gift Card code",
+    comingSoon: false,
   },
   {
     key: "paypal",
     label: "PayPal",
-    placeholder: "Your PayPal email address",
     icon: "P",
+    refLabel: "Your PayPal Name (used to send payment)",
+    refPlaceholder: "Enter the PayPal name you used to send payment",
+    comingSoon: false,
   },
   {
     key: "nexus_bank",
     label: "Nexus Bank",
-    placeholder: "Your Nexus Bank ID (numbers only)",
     icon: "\uD83C\uDFE6",
+    refLabel: "Nexus Bank ID",
+    refPlaceholder: "Your Nexus Bank ID",
+    comingSoon: true,
   },
 ] as const;
 
 type MethodKey = (typeof PAYMENT_METHODS)[number]["key"];
+type ActiveMethodKey = Exclude<MethodKey, "nexus_bank">;
 
 function buildPaymentMethod(
-  key: MethodKey,
+  key: ActiveMethodKey,
   value: string,
 ): PaymentMethod | null {
   if (!value.trim()) return null;
@@ -78,22 +89,50 @@ function buildPaymentMethod(
       return { __kind__: "amazon_gift_card", amazon_gift_card: value.trim() };
     case "paypal":
       return { __kind__: "paypal", paypal: value.trim() };
-    case "nexus_bank": {
-      const n = BigInt(value.trim());
-      return { __kind__: "nexus_bank", nexus_bank: n };
-    }
   }
 }
 
-function PaymentInstructionsView({ method }: { method: string }) {
-  const { data: instructions, isLoading } = useGetPaymentInstructions(method);
-  if (isLoading) return <Skeleton className="h-16 w-full" />;
+// Shows staff's receiving address for the selected payment method
+function StaffAddressBox({ method }: { method: ActiveMethodKey }) {
+  const { data: address, isLoading } = useGetPaymentInstructions(method);
+
+  const handleCopy = async () => {
+    const val = address?.trim();
+    if (!val) return;
+    await navigator.clipboard.writeText(val);
+    toast.success("Copied to clipboard!");
+  };
+
+  if (isLoading) {
+    return <Skeleton className="h-14 w-full rounded-lg" />;
+  }
+
   return (
-    <Alert className="bg-primary/10 border-primary/30">
-      <AlertDescription className="whitespace-pre-wrap text-sm">
-        {instructions || "Payment instructions will be provided by staff."}
-      </AlertDescription>
-    </Alert>
+    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+      <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1.5">
+        Send payment to:
+      </p>
+      {address?.trim() ? (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-sm font-mono text-foreground break-all">
+            {address.trim()}
+          </code>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 flex-shrink-0 text-primary hover:bg-primary/10"
+            onClick={handleCopy}
+            data-ocid="product.payment_address.button"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Payment address not configured yet.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -105,19 +144,19 @@ export default function ProductDetailPage() {
   const isAuthenticated = !!identity;
   const placeOrder = usePlaceOrder();
 
-  const [selectedMethod, setSelectedMethod] = useState<MethodKey>("bitcoin");
+  const [selectedMethod, setSelectedMethod] =
+    useState<ActiveMethodKey>("bitcoin");
   const [paymentRef, setPaymentRef] = useState("");
   const [refError, setRefError] = useState("");
   const [orderId, setOrderId] = useState<bigint | null>(null);
   const [orderPlaced, setOrderPlaced] = useState(false);
 
+  // For success screen address copy
+  const { data: staffAddress } = useGetPaymentInstructions(selectedMethod);
+
   const handleBuy = async () => {
     if (!paymentRef.trim()) {
-      setRefError("Please enter your payment reference");
-      return;
-    }
-    if (selectedMethod === "nexus_bank" && !/^\d+$/.test(paymentRef.trim())) {
-      setRefError("Nexus Bank ID must be numeric");
+      setRefError("Please enter the required information");
       return;
     }
     setRefError("");
@@ -135,6 +174,8 @@ export default function ProductDetailPage() {
       toast.error(e?.message || "Failed to place order");
     }
   };
+
+  const currentMethod = PAYMENT_METHODS.find((m) => m.key === selectedMethod)!;
 
   if (isLoading) {
     return (
@@ -182,18 +223,51 @@ export default function ProductDetailPage() {
         <Card className="bg-card border-border mb-6">
           <CardHeader>
             <CardTitle className="font-display text-base">
-              Payment Instructions
+              Complete Your Payment
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-3">
-              Please complete your payment using{" "}
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Send your payment via{" "}
               <strong className="text-foreground">
                 {PAYMENT_METHODS.find((m) => m.key === selectedMethod)?.label}
-              </strong>
-              :
+              </strong>{" "}
+              to the address below:
             </p>
-            <PaymentInstructionsView method={selectedMethod} />
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1.5">
+                Send payment to:
+              </p>
+              {staffAddress?.trim() ? (
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-sm font-mono text-foreground break-all">
+                    {staffAddress.trim()}
+                  </code>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 flex-shrink-0 text-primary hover:bg-primary/10"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(
+                        staffAddress.trim() ?? "",
+                      );
+                      toast.success("Copied!");
+                    }}
+                    data-ocid="order-confirm.payment_address.button"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Payment address not configured yet. Staff will contact you.
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Once payment is sent, staff will review and deliver your account
+              credentials. Check your orders for status updates.
+            </p>
           </CardContent>
         </Card>
         <div className="flex gap-3">
@@ -283,43 +357,56 @@ export default function ProductDetailPage() {
                   Select Payment Method
                 </Label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {PAYMENT_METHODS.map((m) => (
-                    <button
-                      key={m.key}
-                      type="button"
-                      onClick={() => {
-                        setSelectedMethod(m.key);
-                        setPaymentRef("");
-                        setRefError("");
-                      }}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
-                        selectedMethod === m.key
-                          ? "border-primary bg-primary/15 text-primary"
-                          : "border-border bg-secondary/30 text-muted-foreground hover:border-primary/50 hover:text-foreground"
-                      }`}
-                      data-ocid={`product.${m.key}.toggle`}
-                    >
-                      <span className="text-base">{m.icon}</span>
-                      {m.label}
-                    </button>
-                  ))}
+                  {PAYMENT_METHODS.map((m) =>
+                    m.comingSoon ? (
+                      // Nexus Bank — disabled / coming soon
+                      <div
+                        key={m.key}
+                        className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-secondary/10 text-muted-foreground/40 cursor-not-allowed select-none"
+                        aria-disabled="true"
+                        data-ocid={`product.${m.key}.toggle`}
+                      >
+                        <span className="text-base opacity-40">{m.icon}</span>
+                        <span className="text-sm font-medium">{m.label}</span>
+                        <Badge className="ml-auto text-[10px] px-1.5 py-0 bg-muted text-muted-foreground border-0 leading-5">
+                          Soon
+                        </Badge>
+                      </div>
+                    ) : (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMethod(m.key as ActiveMethodKey);
+                          setPaymentRef("");
+                          setRefError("");
+                        }}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                          selectedMethod === m.key
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "border-border bg-secondary/30 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                        }`}
+                        data-ocid={`product.${m.key}.toggle`}
+                      >
+                        <span className="text-base">{m.icon}</span>
+                        {m.label}
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
+
+              {/* Staff address display */}
+              <StaffAddressBox method={selectedMethod} />
 
               <Separator className="bg-border" />
 
               {/* Payment Reference */}
               <div className="space-y-2">
-                <Label htmlFor="payment-ref">
-                  {PAYMENT_METHODS.find((m) => m.key === selectedMethod)?.label}{" "}
-                  Reference
-                </Label>
+                <Label htmlFor="payment-ref">{currentMethod.refLabel}</Label>
                 <Input
                   id="payment-ref"
-                  placeholder={
-                    PAYMENT_METHODS.find((m) => m.key === selectedMethod)
-                      ?.placeholder
-                  }
+                  placeholder={currentMethod.refPlaceholder}
                   value={paymentRef}
                   onChange={(e) => {
                     setPaymentRef(e.target.value);

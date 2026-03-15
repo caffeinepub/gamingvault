@@ -8,6 +8,7 @@ import {
 import { useState } from "react";
 import HackingCutscene from "./components/HackingCutscene";
 import Layout from "./components/Layout";
+import { CurrencyProvider } from "./hooks/useCurrency";
 import HomePage from "./pages/HomePage";
 import MyOrdersPage from "./pages/MyOrdersPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
@@ -57,7 +58,6 @@ declare module "@tanstack/react-router" {
 }
 
 export default function App() {
-  // Always show the cutscene on every page load/refresh
   const [cutsceneDone, setCutsceneDone] = useState(false);
 
   if (!cutsceneDone) {
@@ -71,9 +71,9 @@ export default function App() {
   }
 
   return (
-    <>
+    <CurrencyProvider>
       <RouterProvider router={router} />
       <Toaster richColors position="top-right" />
-    </>
+    </CurrencyProvider>
   );
 }

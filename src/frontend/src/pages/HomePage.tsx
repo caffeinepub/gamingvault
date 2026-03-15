@@ -14,18 +14,16 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import MatrixRain from "../components/MatrixRain";
 import PatreonBanner from "../components/PatreonBanner";
+import { useCurrency } from "../hooks/useCurrency";
 import { useGetAllProducts } from "../hooks/useQueries";
 
 const SAMPLE_TAGS = ["FPS", "RPG", "Battle Royale", "MOBA", "MMO", "Sports"];
 const SKELETON_KEYS = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
-function formatPrice(cents: bigint): string {
-  return `$${(Number(cents) / 100).toFixed(2)}`;
-}
-
 export default function HomePage() {
   const [search, setSearch] = useState("");
   const { data: products = [], isLoading } = useGetAllProducts();
+  const { formatPrice } = useCurrency();
 
   const filtered = products.filter(
     (p) =>

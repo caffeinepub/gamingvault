@@ -18,16 +18,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { PaymentMethod } from "../backend.d";
 import PatreonBanner from "../components/PatreonBanner";
+import { useCurrency } from "../hooks/useCurrency";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useGetPaymentInstructions,
   useGetProduct,
   usePlaceOrder,
 } from "../hooks/useQueries";
-
-function formatPrice(cents: bigint): string {
-  return `$${(Number(cents) / 100).toFixed(2)}`;
-}
 
 const PAYMENT_METHODS = [
   {
@@ -92,7 +89,6 @@ function buildPaymentMethod(
   }
 }
 
-// Shows staff's receiving address for the selected payment method
 function StaffAddressBox({ method }: { method: ActiveMethodKey }) {
   const { data: address, isLoading } = useGetPaymentInstructions(method);
 
@@ -143,6 +139,7 @@ export default function ProductDetailPage() {
   const { identity } = useInternetIdentity();
   const isAuthenticated = !!identity;
   const placeOrder = usePlaceOrder();
+  const { formatPrice } = useCurrency();
 
   const [selectedMethod, setSelectedMethod] =
     useState<ActiveMethodKey>("bitcoin");
@@ -151,7 +148,6 @@ export default function ProductDetailPage() {
   const [orderId, setOrderId] = useState<bigint | null>(null);
   const [orderPlaced, setOrderPlaced] = useState(false);
 
-  // For success screen address copy
   const { data: staffAddress } = useGetPaymentInstructions(selectedMethod);
 
   const handleBuy = async () => {
@@ -359,7 +355,6 @@ export default function ProductDetailPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {PAYMENT_METHODS.map((m) =>
                     m.comingSoon ? (
-                      // Nexus Bank — disabled / coming soon
                       <div
                         key={m.key}
                         className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-secondary/10 text-muted-foreground/40 cursor-not-allowed select-none"

@@ -12,6 +12,9 @@ interface TerminalLine {
   alert?: boolean;
 }
 
+// Regex: exactly 2 letters then exactly 5 digits
+const CPM_ID_REGEX = /^[A-Za-z]{2}\d{5}$/;
+
 // Lines printed before the ID gate appears
 const GATE_AFTER = 16;
 
@@ -142,7 +145,289 @@ const PROGRESS_BARS = [
   { label: "SYSTEM ONLINE", start: 0.85, end: 1.0 },
 ];
 
+const BOOT_STATUS_LINES = [
+  "POWER ON...",
+  "BIOS v2.4.1 OK",
+  "RAM CHECK... 65536MB OK",
+  "LOADING BOOT SECTOR...",
+  "SYSTEM READY",
+];
+
+// ─── Power On Screen ──────────────────────────────────────────────────────────
+function PowerOnScreen({ onDone }: { onDone: () => void }) {
+  const [powered, setPowered] = useState<boolean>(false);
+  const [activated, setActivated] = useState<boolean>(false);
+  const [visibleLines, setVisibleLines] = useState<number>(0);
+  const [fading, setFading] = useState<boolean>(false);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  const handlePowerOn = useCallback(() => {
+    if (powered) return;
+    setPowered(true);
+    setActivated(true);
+
+    // After brief flash, de-activate glow burst
+    setTimeout(() => setActivated(false), 400);
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    // Show each status line every ~500ms
+    BOOT_STATUS_LINES.forEach((_, i) => {
+      timers.push(setTimeout(() => setVisibleLines(i + 1), 300 + i * 500));
+    });
+    // Start fade after all lines shown
+    timers.push(
+      setTimeout(() => setFading(true), 300 + BOOT_STATUS_LINES.length * 500),
+    );
+    // Call onDone after fade
+    timers.push(
+      setTimeout(
+        () => onDoneRef.current(),
+        300 + BOOT_STATUS_LINES.length * 500 + 700,
+      ),
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [powered]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#000",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 10,
+        opacity: fading ? 0 : 1,
+        transition: "opacity 0.7s ease",
+      }}
+    >
+      {/* Boot logo */}
+      <div
+        style={{
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: "3rem",
+          fontWeight: 700,
+          color: "#00ff41",
+          letterSpacing: "0.18em",
+          textShadow:
+            "0 0 20px #00ff41, 0 0 60px rgba(0,255,65,0.8), 0 0 100px rgba(0,255,65,0.4)",
+          marginBottom: "48px",
+          animation: "logoGlow 2s ease-in-out infinite alternate",
+        }}
+      >
+        H4CK.FST
+      </div>
+
+      {/* Clickable power button */}
+      {!powered && (
+        <button
+          type="button"
+          data-ocid="boot.primary_button"
+          onClick={handlePowerOn}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "18px",
+            outline: "none",
+          }}
+          aria-label="Power on H4CK.FST"
+        >
+          {/* Glowing circle surround */}
+          <div
+            style={{
+              width: "110px",
+              height: "110px",
+              borderRadius: "50%",
+              border: `2px solid ${activated ? "#afffbc" : "rgba(0,255,65,0.35)"}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: activated
+                ? "0 0 60px #00ff41, 0 0 120px rgba(0,255,65,0.7), inset 0 0 30px rgba(0,255,65,0.15)"
+                : "0 0 20px rgba(0,255,65,0.2), inset 0 0 10px rgba(0,255,65,0.05)",
+              transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+              animation: "powerRingPulse 2.5s ease-in-out infinite",
+            }}
+          >
+            <svg
+              role="img"
+              aria-label="Power button"
+              width="64"
+              height="64"
+              viewBox="0 0 80 80"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              style={{
+                filter: activated
+                  ? "drop-shadow(0 0 28px #00ff41) drop-shadow(0 0 80px rgba(0,255,65,0.9))"
+                  : "drop-shadow(0 0 14px #00ff41) drop-shadow(0 0 40px rgba(0,255,65,0.6))",
+                transition: "filter 0.2s ease",
+                animation: "powerPulse 2s ease-in-out infinite",
+              }}
+            >
+              {/* Vertical line at top */}
+              <line
+                x1="40"
+                y1="12"
+                x2="40"
+                y2="36"
+                stroke="#00ff41"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+              {/* Circular arc (power symbol) */}
+              <path
+                d="M 24 22 A 22 22 0 1 0 56 22"
+                stroke="#00ff41"
+                strokeWidth="5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
+          </div>
+
+          {/* Blinking press label */}
+          <span
+            style={{
+              fontFamily: "'Share Tech Mono', monospace",
+              fontSize: "0.72rem",
+              color: "rgba(0,255,65,0.7)",
+              letterSpacing: "0.22em",
+              textShadow: "0 0 8px rgba(0,255,65,0.5)",
+              animation: "blinkLabel 1.1s step-end infinite",
+              userSelect: "none",
+            }}
+          >
+            [ PRESS TO POWER ON ]
+          </span>
+        </button>
+      )}
+
+      {/* Power activated — show non-interactive icon + boot lines */}
+      {powered && (
+        <>
+          <div
+            style={{
+              marginBottom: "28px",
+              animation: "powerPulse 2s ease-in-out infinite",
+            }}
+          >
+            <svg
+              role="img"
+              aria-label="Power button"
+              width="80"
+              height="80"
+              viewBox="0 0 80 80"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              style={{
+                filter:
+                  "drop-shadow(0 0 28px #00ff41) drop-shadow(0 0 80px rgba(0,255,65,0.9))",
+              }}
+            >
+              <line
+                x1="40"
+                y1="12"
+                x2="40"
+                y2="36"
+                stroke="#00ff41"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+              <path
+                d="M 24 22 A 22 22 0 1 0 56 22"
+                stroke="#00ff41"
+                strokeWidth="5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
+          </div>
+
+          {/* Boot status lines */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+              minWidth: "260px",
+            }}
+          >
+            {BOOT_STATUS_LINES.map((line, i) => (
+              <div
+                key={line}
+                style={{
+                  fontFamily: "'Share Tech Mono', monospace",
+                  fontSize: "0.78rem",
+                  color: "rgba(0,255,65,0.6)",
+                  letterSpacing: "0.12em",
+                  opacity: i < visibleLines ? 1 : 0,
+                  transition: "opacity 0.3s ease",
+                  textShadow: "0 0 6px rgba(0,255,65,0.4)",
+                }}
+              >
+                &gt; {line}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <style>{`
+        @keyframes powerPulse {
+          0%, 100% {
+            filter: drop-shadow(0 0 14px #00ff41) drop-shadow(0 0 40px rgba(0,255,65,0.6));
+          }
+          50% {
+            filter: drop-shadow(0 0 28px #00ff41) drop-shadow(0 0 80px rgba(0,255,65,0.9)) drop-shadow(0 0 120px rgba(0,255,65,0.4));
+          }
+        }
+        @keyframes powerRingPulse {
+          0%, 100% { box-shadow: 0 0 20px rgba(0,255,65,0.2), inset 0 0 10px rgba(0,255,65,0.05); }
+          50% { box-shadow: 0 0 40px rgba(0,255,65,0.45), inset 0 0 20px rgba(0,255,65,0.08); }
+        }
+        @keyframes logoGlow {
+          from { text-shadow: 0 0 20px #00ff41, 0 0 60px rgba(0,255,65,0.8); }
+          to   { text-shadow: 0 0 30px #00ff41, 0 0 90px rgba(0,255,65,1), 0 0 140px rgba(0,255,65,0.5); }
+        }
+        @keyframes blinkLabel {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+        button[data-ocid="boot.primary_button"]:hover svg {
+          filter: drop-shadow(0 0 22px #00ff41) drop-shadow(0 0 60px rgba(0,255,65,0.85)) !important;
+        }
+        button[data-ocid="boot.primary_button"]:hover span {
+          color: #00ff41 !important;
+          text-shadow: 0 0 16px rgba(0,255,65,0.9) !important;
+        }
+        button[data-ocid="boot.primary_button"]:focus-visible {
+          outline: 2px solid rgba(0,255,65,0.6);
+          outline-offset: 8px;
+          border-radius: 50%;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ─── Main cutscene ────────────────────────────────────────────────────────────
 export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
+  // Always clear any stored Player ID so the gate shows fresh on every visit
+  useEffect(() => {
+    sessionStorage.removeItem("cpmPlayerId");
+  }, []);
+
+  const [phase, setPhase] = useState<"boot" | "terminal">("boot");
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const [progress, setProgress] = useState<number>(0);
   const [glitchActive, setGlitchActive] = useState<boolean>(false);
@@ -153,13 +438,11 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
   });
   const [blinkVisible, setBlinkVisible] = useState<boolean>(true);
 
-  // ID gate state
+  // ID gate state — always false on mount (sessionStorage cleared above)
   const [gateVisible, setGateVisible] = useState<boolean>(false);
   const [cpmId, setCpmId] = useState<string>("");
   const [gateError, setGateError] = useState<string>("");
-  const [idConfirmed, setIdConfirmed] = useState<boolean>(
-    () => !!sessionStorage.getItem("cpmPlayerId"),
-  );
+  const [idConfirmed, setIdConfirmed] = useState<boolean>(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -174,11 +457,12 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
     if (completedRef.current) return;
     if (!sessionStorage.getItem("cpmPlayerId")) return;
     completedRef.current = true;
-    sessionStorage.setItem("hackCutsceneDone", "1");
+
     onComplete();
   }, [onComplete]);
 
   useEffect(() => {
+    if (phase !== "terminal") return;
     const handler = (e: Event) => {
       if (pausedRef.current) return;
       if (e.type === "click") {
@@ -193,14 +477,16 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
       window.removeEventListener("keydown", handler);
       window.removeEventListener("click", handler);
     };
-  }, [finish]);
+  }, [finish, phase]);
 
   useEffect(() => {
+    if (phase !== "terminal") return;
     const timer = setTimeout(finish, durationRef.current);
     return () => clearTimeout(timer);
-  }, [finish]);
+  }, [finish, phase]);
 
   useEffect(() => {
+    if (phase !== "terminal") return;
     const start = Date.now();
     const duration = durationRef.current;
     let raf: number;
@@ -225,9 +511,10 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
     };
     raf = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [phase]);
 
   useEffect(() => {
+    if (phase !== "terminal") return;
     let poolIdx = 0;
     let timeout: ReturnType<typeof setTimeout>;
     let stopped = false;
@@ -279,7 +566,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
       stopped = true;
       clearTimeout(timeout);
     };
-  }, []);
+  }, [phase]);
 
   useEffect(() => {
     if (gateVisible && inputRef.current) {
@@ -288,11 +575,18 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
   }, [gateVisible]);
 
   const handleConfirm = useCallback(() => {
-    if (!cpmId.trim()) {
+    const trimmed = cpmId.trim().toUpperCase();
+    if (!trimmed) {
       setGateError("> ERROR: PLAYER ID REQUIRED. ACCESS DENIED.");
       return;
     }
-    sessionStorage.setItem("cpmPlayerId", cpmId.trim());
+    if (!CPM_ID_REGEX.test(trimmed)) {
+      setGateError(
+        "> ERROR: INVALID FORMAT. EXPECTED 2 LETTERS + 5 NUMBERS (e.g. AB12345).",
+      );
+      return;
+    }
+    sessionStorage.setItem("cpmPlayerId", trimmed);
     setIdConfirmed(true);
     setGateVisible(false);
     setGateError("");
@@ -377,6 +671,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
     >
       <MatrixRain className="absolute inset-0 w-full h-full opacity-40" />
 
+      {/* Scanlines */}
       <div
         style={{
           position: "absolute",
@@ -388,6 +683,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
         }}
       />
 
+      {/* Flash */}
       <div
         style={{
           position: "absolute",
@@ -399,350 +695,382 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
         }}
       />
 
-      <div
-        style={{
-          position: "relative",
-          zIndex: 10,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "100vh",
-          padding: "24px",
-          fontFamily: "'Share Tech Mono', monospace",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "clamp(2rem, 6vw, 3.5rem)",
-            fontWeight: 700,
-            color: "#00ff41",
-            marginBottom: "32px",
-            letterSpacing: "0.15em",
-            animation: glitchActive ? "none" : "cutsceneGlitch 1.5s infinite",
-            textShadow: glitchActive
-              ? "-4px 0 #ff0040, 4px 0 #00ffff, 0 0 30px #00ff41"
-              : "0 0 20px #00ff41, 0 0 60px rgba(0,255,65,0.5)",
-            transform: glitchActive
-              ? `translate(${(Math.random() - 0.5) * 10}px, ${(Math.random() - 0.5) * 4}px)`
-              : "none",
-          }}
-        >
-          H4CK.FST
-        </div>
+      {/* Content layer */}
+      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
+        {/* ── BOOT SCREEN ── */}
+        {phase === "boot" && (
+          <PowerOnScreen onDone={() => setPhase("terminal")} />
+        )}
 
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "860px",
-            border: "1px solid #00ff41",
-            boxShadow:
-              "0 0 30px rgba(0,255,65,0.5), 0 0 80px rgba(0,255,65,0.2), inset 0 0 20px rgba(0,255,65,0.04)",
-            background: "rgba(0,10,0,0.92)",
-          }}
-        >
-          {/* Titlebar */}
+        {/* ── TERMINAL ── */}
+        {phase === "terminal" && (
           <div
             style={{
-              borderBottom: "1px solid rgba(0,255,65,0.3)",
-              padding: "8px 16px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              background: "rgba(0,255,65,0.05)",
-            }}
-          >
-            <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: "#ff5f56",
-              }}
-            />
-            <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: "#ffbd2e",
-              }}
-            />
-            <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                background: "#27c93f",
-              }}
-            />
-            <span
-              style={{
-                marginLeft: 8,
-                color: "rgba(0,255,65,0.6)",
-                fontSize: "0.75rem",
-              }}
-            >
-              root@h4ck.fst -- bash
-            </span>
-            <span
-              style={{
-                marginLeft: "auto",
-                color: "rgba(0,255,65,0.4)",
-                fontSize: "0.7rem",
-              }}
-            >
-              {idConfirmed ? `ETA: ${remainingSecs}s` : "-- AWAITING AUTH --"}
-            </span>
-          </div>
-
-          {/* Terminal output */}
-          <div
-            ref={terminalRef}
-            style={{
-              height: "320px",
-              overflowY: "auto",
-              padding: "16px",
-              fontSize: "0.78rem",
-              lineHeight: 1.7,
-              scrollbarWidth: "none",
-            }}
-          >
-            {lines.map((line) => (
-              <div
-                key={line.id}
-                style={{
-                  color: line.bright
-                    ? "#ffffff"
-                    : line.alert
-                      ? "#ffcc00"
-                      : "#00ff41",
-                  textShadow: line.bright
-                    ? "0 0 15px #00ff41, 0 0 40px rgba(0,255,65,0.8)"
-                    : line.alert
-                      ? "0 0 10px #ffcc00"
-                      : "0 0 6px rgba(0,255,65,0.5)",
-                  animation: line.bright
-                    ? "brightPulse 0.8s ease-in-out infinite alternate"
-                    : "none",
-                  fontWeight: line.bright ? 700 : 400,
-                }}
-              >
-                {line.text}
-              </div>
-            ))}
-
-            {/* ID Gate prompt */}
-            {gateVisible && (
-              <div
-                data-gate="true"
-                style={{
-                  marginTop: "12px",
-                  padding: "14px 16px",
-                  border: "1px solid rgba(0,255,65,0.6)",
-                  background: "rgba(0,20,0,0.95)",
-                  boxShadow:
-                    "0 0 20px rgba(0,255,65,0.3), inset 0 0 10px rgba(0,255,65,0.05)",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#ffcc00",
-                    textShadow: "0 0 10px #ffcc00",
-                    marginBottom: "6px",
-                    fontSize: "0.82rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  &gt; AUTHENTICATION REQUIRED
-                </div>
-                <div
-                  style={{
-                    color: "#00ff41",
-                    textShadow: "0 0 6px rgba(0,255,65,0.5)",
-                    marginBottom: "12px",
-                    fontSize: "0.78rem",
-                  }}
-                >
-                  &gt; ENTER YOUR CAR PARKING MULTIPLAYER PLAYER ID TO CONTINUE:
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    alignItems: "stretch",
-                  }}
-                >
-                  <input
-                    ref={inputRef}
-                    data-ocid="cutscene.input"
-                    type="text"
-                    value={cpmId}
-                    onChange={(e) => {
-                      setCpmId(e.target.value);
-                      if (gateError) setGateError("");
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder="e.g. CPM-1234567"
-                    style={{
-                      flex: 1,
-                      background: "rgba(0,10,0,0.9)",
-                      border: "1px solid #00ff41",
-                      color: "#00ff41",
-                      fontFamily: "'Share Tech Mono', monospace",
-                      fontSize: "0.82rem",
-                      padding: "8px 12px",
-                      outline: "none",
-                      boxShadow: "0 0 10px rgba(0,255,65,0.3)",
-                      caretColor: "#00ff41",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    data-ocid="cutscene.primary_button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleConfirm();
-                    }}
-                    style={{
-                      background: "#00ff41",
-                      color: "#000",
-                      border: "none",
-                      fontFamily: "'Share Tech Mono', monospace",
-                      fontSize: "0.82rem",
-                      fontWeight: 700,
-                      padding: "8px 20px",
-                      cursor: "pointer",
-                      letterSpacing: "0.08em",
-                      boxShadow: "0 0 16px rgba(0,255,65,0.7)",
-                      transition: "background 0.15s, box-shadow 0.15s",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        "#afffbc";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background =
-                        "#00ff41";
-                    }}
-                  >
-                    CONFIRM
-                  </button>
-                </div>
-                {gateError && (
-                  <div
-                    style={{
-                      marginTop: "8px",
-                      color: "#ff3333",
-                      textShadow: "0 0 8px #ff0000",
-                      fontSize: "0.76rem",
-                    }}
-                  >
-                    {gateError}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!gateVisible && (
-              <div style={{ color: "#00ff41" }}>
-                <span style={{ opacity: blinkVisible ? 1 : 0 }}>|</span>
-              </div>
-            )}
-          </div>
-
-          {/* Progress bars */}
-          <div
-            style={{
-              borderTop: "1px solid rgba(0,255,65,0.2)",
-              padding: "16px",
               display: "flex",
               flexDirection: "column",
-              gap: "10px",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: "100vh",
+              padding: "24px",
+              fontFamily: "'Share Tech Mono', monospace",
+              animation: "fadeIn 0.5s ease",
             }}
           >
-            {PROGRESS_BARS.map((bar) => {
-              const pct = getBarProgress(bar);
-              const isActive = progress > bar.start && progress < bar.end;
-              return (
-                <div key={bar.label}>
+            <div
+              style={{
+                fontSize: "clamp(2rem, 6vw, 3.5rem)",
+                fontWeight: 700,
+                color: "#00ff41",
+                marginBottom: "32px",
+                letterSpacing: "0.15em",
+                animation: glitchActive
+                  ? "none"
+                  : "cutsceneGlitch 1.5s infinite",
+                textShadow: glitchActive
+                  ? "-4px 0 #ff0040, 4px 0 #00ffff, 0 0 30px #00ff41"
+                  : "0 0 20px #00ff41, 0 0 60px rgba(0,255,65,0.5)",
+                transform: glitchActive
+                  ? `translate(${(Math.random() - 0.5) * 10}px, ${(Math.random() - 0.5) * 4}px)`
+                  : "none",
+              }}
+            >
+              H4CK.FST
+            </div>
+
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "860px",
+                border: "1px solid #00ff41",
+                boxShadow:
+                  "0 0 30px rgba(0,255,65,0.5), 0 0 80px rgba(0,255,65,0.2), inset 0 0 20px rgba(0,255,65,0.04)",
+                background: "rgba(0,10,0,0.92)",
+              }}
+            >
+              {/* Titlebar */}
+              <div
+                style={{
+                  borderBottom: "1px solid rgba(0,255,65,0.3)",
+                  padding: "8px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  background: "rgba(0,255,65,0.05)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: "#ff5f56",
+                  }}
+                />
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: "#ffbd2e",
+                  }}
+                />
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: "#27c93f",
+                  }}
+                />
+                <span
+                  style={{
+                    marginLeft: 8,
+                    color: "rgba(0,255,65,0.6)",
+                    fontSize: "0.75rem",
+                  }}
+                >
+                  root@h4ck.fst -- bash
+                </span>
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    color: "rgba(0,255,65,0.4)",
+                    fontSize: "0.7rem",
+                  }}
+                >
+                  {idConfirmed
+                    ? `ETA: ${remainingSecs}s`
+                    : "-- AWAITING AUTH --"}
+                </span>
+              </div>
+
+              {/* Terminal output */}
+              <div
+                ref={terminalRef}
+                style={{
+                  height: "320px",
+                  overflowY: "auto",
+                  padding: "16px",
+                  fontSize: "0.78rem",
+                  lineHeight: 1.7,
+                  scrollbarWidth: "none",
+                }}
+              >
+                {lines.map((line) => (
                   <div
+                    key={line.id}
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: "0.7rem",
-                      color:
-                        pct >= 100
-                          ? "#00ff41"
-                          : isActive
-                            ? "#afffbc"
-                            : "rgba(0,255,65,0.4)",
-                      marginBottom: "4px",
+                      color: line.bright
+                        ? "#ffffff"
+                        : line.alert
+                          ? "#ffcc00"
+                          : "#00ff41",
+                      textShadow: line.bright
+                        ? "0 0 15px #00ff41, 0 0 40px rgba(0,255,65,0.8)"
+                        : line.alert
+                          ? "0 0 10px #ffcc00"
+                          : "0 0 6px rgba(0,255,65,0.5)",
+                      animation: line.bright
+                        ? "brightPulse 0.8s ease-in-out infinite alternate"
+                        : "none",
+                      fontWeight: line.bright ? 700 : 400,
                     }}
                   >
-                    <span>{bar.label}</span>
-                    <span>{Math.floor(pct)}%</span>
+                    {line.text}
                   </div>
+                ))}
+
+                {/* ID Gate prompt */}
+                {gateVisible && (
                   <div
+                    data-gate="true"
                     style={{
-                      height: "6px",
-                      background: "rgba(0,255,65,0.1)",
-                      border: "1px solid rgba(0,255,65,0.2)",
-                      position: "relative",
-                      overflow: "hidden",
+                      marginTop: "12px",
+                      padding: "14px 16px",
+                      border: "1px solid rgba(0,255,65,0.6)",
+                      background: "rgba(0,20,0,0.95)",
+                      boxShadow:
+                        "0 0 20px rgba(0,255,65,0.3), inset 0 0 10px rgba(0,255,65,0.05)",
                     }}
                   >
                     <div
                       style={{
-                        height: "100%",
-                        width: `${pct}%`,
-                        background:
-                          pct >= 100
-                            ? "#00ff41"
-                            : "linear-gradient(90deg, #00ff41, #afffbc)",
-                        boxShadow: isActive
-                          ? "0 0 12px #00ff41, 0 0 24px rgba(0,255,65,0.6)"
-                          : "none",
-                        transition: "width 0.15s linear",
+                        color: "#ffcc00",
+                        textShadow: "0 0 10px #ffcc00",
+                        marginBottom: "6px",
+                        fontSize: "0.82rem",
+                        fontWeight: 700,
                       }}
-                    />
+                    >
+                      &gt; AUTHENTICATION REQUIRED
+                    </div>
+                    <div
+                      style={{
+                        color: "#00ff41",
+                        textShadow: "0 0 6px rgba(0,255,65,0.5)",
+                        marginBottom: "4px",
+                        fontSize: "0.78rem",
+                      }}
+                    >
+                      &gt; ENTER YOUR CAR PARKING MULTIPLAYER PLAYER ID TO
+                      CONTINUE:
+                    </div>
+                    <div
+                      style={{
+                        color: "rgba(0,255,65,0.55)",
+                        fontSize: "0.72rem",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      &gt; FORMAT: 2 LETTERS + 5 NUMBERS &nbsp;(e.g. AB12345)
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <input
+                        ref={inputRef}
+                        data-ocid="cutscene.input"
+                        type="text"
+                        value={cpmId}
+                        onChange={(e) => {
+                          setCpmId(e.target.value);
+                          if (gateError) setGateError("");
+                        }}
+                        onKeyDown={handleKeyDown}
+                        placeholder="e.g. AB12345"
+                        maxLength={7}
+                        style={{
+                          flex: 1,
+                          background: "rgba(0,10,0,0.9)",
+                          border: "1px solid #00ff41",
+                          color: "#00ff41",
+                          fontFamily: "'Share Tech Mono', monospace",
+                          fontSize: "0.82rem",
+                          padding: "8px 12px",
+                          outline: "none",
+                          boxShadow: "0 0 10px rgba(0,255,65,0.3)",
+                          caretColor: "#00ff41",
+                          textTransform: "uppercase",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        data-ocid="cutscene.primary_button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleConfirm();
+                        }}
+                        style={{
+                          background: "#00ff41",
+                          color: "#000",
+                          border: "none",
+                          fontFamily: "'Share Tech Mono', monospace",
+                          fontSize: "0.82rem",
+                          fontWeight: 700,
+                          padding: "8px 20px",
+                          cursor: "pointer",
+                          letterSpacing: "0.08em",
+                          boxShadow: "0 0 16px rgba(0,255,65,0.7)",
+                          transition: "background 0.15s, box-shadow 0.15s",
+                        }}
+                        onMouseEnter={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "#afffbc";
+                        }}
+                        onMouseLeave={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "#00ff41";
+                        }}
+                      >
+                        CONFIRM
+                      </button>
+                    </div>
+                    {gateError && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          color: "#ff3333",
+                          textShadow: "0 0 8px #ff0000",
+                          fontSize: "0.76rem",
+                        }}
+                      >
+                        {gateError}
+                      </div>
+                    )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                )}
 
-        {!gateVisible && (
-          <div
-            style={{
-              marginTop: "28px",
-              fontSize: "0.75rem",
-              color: "rgba(0,255,65,0.5)",
-              letterSpacing: "0.1em",
-              animation: "blinkAnim 1.2s step-end infinite",
-            }}
-          >
-            [ PRESS ANY KEY TO SKIP ]
-          </div>
-        )}
-        {gateVisible && (
-          <div
-            style={{
-              marginTop: "28px",
-              fontSize: "0.75rem",
-              color: "rgba(255,204,0,0.7)",
-              letterSpacing: "0.1em",
-              textShadow: "0 0 8px rgba(255,204,0,0.4)",
-              animation: "blinkAnim 1.2s step-end infinite",
-            }}
-          >
-            [ AUTHENTICATION REQUIRED TO PROCEED ]
+                {!gateVisible && (
+                  <div style={{ color: "#00ff41" }}>
+                    <span style={{ opacity: blinkVisible ? 1 : 0 }}>|</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Progress bars */}
+              <div
+                style={{
+                  borderTop: "1px solid rgba(0,255,65,0.2)",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                {PROGRESS_BARS.map((bar) => {
+                  const pct = getBarProgress(bar);
+                  const isActive = progress > bar.start && progress < bar.end;
+                  return (
+                    <div key={bar.label}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontSize: "0.7rem",
+                          color:
+                            pct >= 100
+                              ? "#00ff41"
+                              : isActive
+                                ? "#afffbc"
+                                : "rgba(0,255,65,0.4)",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        <span>{bar.label}</span>
+                        <span>{Math.floor(pct)}%</span>
+                      </div>
+                      <div
+                        style={{
+                          height: "6px",
+                          background: "rgba(0,255,65,0.1)",
+                          border: "1px solid rgba(0,255,65,0.2)",
+                          position: "relative",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${pct}%`,
+                            background:
+                              pct >= 100
+                                ? "#00ff41"
+                                : "linear-gradient(90deg, #00ff41, #afffbc)",
+                            boxShadow: isActive
+                              ? "0 0 12px #00ff41, 0 0 24px rgba(0,255,65,0.6)"
+                              : "none",
+                            transition: "width 0.15s linear",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {!gateVisible && (
+              <div
+                style={{
+                  marginTop: "28px",
+                  fontSize: "0.75rem",
+                  color: "rgba(0,255,65,0.5)",
+                  letterSpacing: "0.1em",
+                  animation: "blinkAnim 1.2s step-end infinite",
+                }}
+              >
+                [ PRESS ANY KEY TO SKIP ]
+              </div>
+            )}
+            {gateVisible && (
+              <div
+                style={{
+                  marginTop: "28px",
+                  fontSize: "0.75rem",
+                  color: "rgba(255,204,0,0.7)",
+                  letterSpacing: "0.1em",
+                  textShadow: "0 0 8px rgba(255,204,0,0.4)",
+                  animation: "blinkAnim 1.2s step-end infinite",
+                }}
+              >
+                [ AUTHENTICATION REQUIRED TO PROCEED ]
+              </div>
+            )}
           </div>
         )}
       </div>
 
       <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: scale(0.98); }
+          to   { opacity: 1; transform: scale(1); }
+        }
         @keyframes cutsceneGlitch {
           0%   { text-shadow: 0 0 20px #00ff41, 0 0 60px rgba(0,255,65,0.5); transform: translate(0); }
           5%   { text-shadow: -5px 0 #ff0040, 5px 0 #00ffff, 0 0 30px #00ff41; transform: translate(-4px, 2px); }

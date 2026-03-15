@@ -57,15 +57,13 @@ declare module "@tanstack/react-router" {
 }
 
 export default function App() {
-  const [cutsceneDone, setCutsceneDone] = useState(() => {
-    return sessionStorage.getItem("hackCutsceneDone") === "1";
-  });
+  // Always show the cutscene on every page load/refresh
+  const [cutsceneDone, setCutsceneDone] = useState(false);
 
   if (!cutsceneDone) {
     return (
       <HackingCutscene
         onComplete={() => {
-          sessionStorage.setItem("hackCutsceneDone", "1");
           setCutsceneDone(true);
         }}
       />

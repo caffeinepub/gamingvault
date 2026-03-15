@@ -71,6 +71,7 @@ export interface _SERVICE {
   'getProduct' : ActorMethod<[ProductId], Product>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'placeOrder' : ActorMethod<[ProductId, PaymentMethod], OrderId>,
+  'registerStaff' : ActorMethod<[string], undefined>,
   'saveBuyerContactDetails' : ActorMethod<[[] | [string]], undefined>,
   'setPaymentInstructions' : ActorMethod<[string, string], undefined>,
 }

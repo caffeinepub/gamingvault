@@ -86,6 +86,8 @@ export interface backendInterface {
     getProduct(id: ProductId): Promise<Product>;
     isCallerAdmin(): Promise<boolean>;
     placeOrder(productId: ProductId, paymentMethod: PaymentMethod): Promise<OrderId>;
+    registerStaff(passcode: string): Promise<void>;
     saveBuyerContactDetails(email: string | null): Promise<void>;
     setPaymentInstructions(method: string, instructions: string): Promise<void>;
+    _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
 }

@@ -13,6 +13,7 @@ import {
   Copy,
   CreditCard,
   Edit2,
+  Link2,
   Loader2,
   Lock,
   Package,
@@ -20,12 +21,15 @@ import {
   ShieldCheck,
   ShoppingBag,
   Trash2,
+  User,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Order, Product } from "../backend.d";
 import { useActor } from "../hooks/useActor";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import { usePatreonUrlEditor } from "../hooks/usePatreonUrl";
 import {
   useAcceptOrder,
   useAddProduct,
@@ -93,16 +97,37 @@ function StatusBadge({ status }: { status: Order["status"] }) {
 
 // ---- PASSCODE SCREEN ----
 function PasscodeScreen({ onUnlock }: { onUnlock: () => void }) {
+  const { identity, login, isInitializing, isLoggingIn } =
+    useInternetIdentity();
+  const { actor, isFetching: actorFetching } = useActor();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
+  const [registering, setRegistering] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const isAuthenticated = !!identity;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (code === STAFF_CODE) {
-      onUnlock();
-    } else {
+    setError("");
+    if (code !== STAFF_CODE) {
       setError("Incorrect passcode. Please try again.");
       setCode("");
+      return;
+    }
+    if (!actor) {
+      setError("Actor not ready. Please wait a moment and try again.");
+      return;
+    }
+    setRegistering(true);
+    try {
+      await (actor as any).registerStaff(code);
+      onUnlock();
+    } catch (err: any) {
+      setError(
+        err?.message || "Failed to register as staff. Please try again.",
+      );
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -115,43 +140,91 @@ function PasscodeScreen({ onUnlock }: { onUnlock: () => void }) {
           </div>
           <CardTitle className="font-display text-xl">Staff Access</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter your staff passcode to continue
+            {isAuthenticated
+              ? "Enter your staff passcode to continue"
+              : "Login to access the staff panel"}
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="staff-code">Passcode</Label>
-              <Input
-                id="staff-code"
-                type="password"
-                placeholder="Enter passcode"
-                value={code}
-                onChange={(e) => {
-                  setCode(e.target.value);
-                  setError("");
-                }}
-                autoComplete="off"
-                data-ocid="staff.passcode.input"
-              />
-              {error && (
-                <p
-                  className="text-sm text-destructive"
-                  data-ocid="staff.passcode.error_state"
-                >
-                  {error}
-                </p>
-              )}
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              data-ocid="staff.passcode.submit_button"
+          {isInitializing ? (
+            <div
+              className="flex items-center justify-center py-6 gap-2 text-muted-foreground"
+              data-ocid="staff.passcode.loading_state"
             >
-              <ShieldCheck className="w-4 h-4 mr-2" />
-              Unlock Panel
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Initializing...</span>
+            </div>
+          ) : !isAuthenticated ? (
+            <Button
+              className="w-full"
+              onClick={login}
+              disabled={isLoggingIn}
+              data-ocid="staff.passcode.login_button"
+            >
+              {isLoggingIn ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <User className="w-4 h-4 mr-2" />
+                  Login with Internet Identity
+                </>
+              )}
             </Button>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground bg-primary/5 border border-primary/20 rounded-md px-3 py-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  <span className="truncate">
+                    Logged in as:{" "}
+                    {identity?.getPrincipal().toString().slice(0, 20)}...
+                  </span>
+                </div>
+                <Label htmlFor="staff-code">Passcode</Label>
+                <Input
+                  id="staff-code"
+                  type="password"
+                  placeholder="Enter passcode"
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    setError("");
+                  }}
+                  autoComplete="off"
+                  data-ocid="staff.passcode.input"
+                />
+                {error && (
+                  <p
+                    className="text-sm text-destructive"
+                    data-ocid="staff.passcode.error_state"
+                  >
+                    {error}
+                  </p>
+                )}
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={registering || actorFetching}
+                data-ocid="staff.passcode.submit_button"
+              >
+                {registering ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4 mr-2" />
+                    Unlock Panel
+                  </>
+                )}
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -766,6 +839,62 @@ function PaymentSettingsTab() {
   );
 }
 
+// ---- PATREON SETTINGS TAB ----
+function PatreonSettingsTab() {
+  const [draft, setDraft, save] = usePatreonUrlEditor();
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    save();
+    setSaved(true);
+    toast.success("Patreon URL saved!");
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="font-display text-xl font-semibold mb-1">
+          Patreon Settings
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Set your Patreon URL. When set, a donation banner will appear across
+          the store encouraging users to subscribe for exclusive deals,
+          freebies, and more.
+        </p>
+      </div>
+      <div className="space-y-3">
+        <Label
+          htmlFor="patreon-url"
+          className="font-medium flex items-center gap-2"
+        >
+          <Link2 className="w-4 h-4 text-primary" />
+          Patreon URL
+        </Label>
+        <Input
+          id="patreon-url"
+          type="url"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="https://www.patreon.com/your-page"
+          className="font-mono"
+          data-ocid="staff.patreon.input"
+        />
+        <p className="text-xs text-muted-foreground">
+          Paste your full Patreon URL. Leave empty to hide the donation banner.
+        </p>
+      </div>
+      <Button
+        onClick={handleSave}
+        variant={saved ? "outline" : "default"}
+        data-ocid="staff.patreon.save_button"
+      >
+        {saved ? "Saved ✓" : "Save Patreon URL"}
+      </Button>
+    </div>
+  );
+}
+
 // ---- STAFF DASHBOARD ----
 function StaffDashboard() {
   return (
@@ -808,6 +937,14 @@ function StaffDashboard() {
             <CreditCard className="w-3.5 h-3.5" />
             Payment Settings
           </TabsTrigger>
+          <TabsTrigger
+            value="patreon"
+            className="gap-1.5"
+            data-ocid="staff.patreon.tab"
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            Patreon
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="products">
           <ProductsTab />
@@ -817,6 +954,9 @@ function StaffDashboard() {
         </TabsContent>
         <TabsContent value="payments">
           <PaymentSettingsTab />
+        </TabsContent>
+        <TabsContent value="patreon">
+          <PatreonSettingsTab />
         </TabsContent>
       </Tabs>
     </div>

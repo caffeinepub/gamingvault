@@ -1,4 +1,5 @@
 import { Heart } from "lucide-react";
+import PatreonBanner from "./PatreonBanner";
 
 export default function Footer() {
   const year = new Date().getFullYear();
@@ -8,6 +9,11 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-border bg-card/50 mt-auto terminal-border">
+      {/* Patreon footer banner */}
+      <div className="border-b border-border/50">
+        <PatreonBanner variant="hero" />
+      </div>
+
       <div className="container mx-auto px-4 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
         <div className="flex items-center gap-2">
           <span

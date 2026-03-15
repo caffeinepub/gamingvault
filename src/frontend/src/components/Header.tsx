@@ -3,12 +3,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Loader2, LogIn, LogOut, ShieldCheck, ShoppingBag } from "lucide-react";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import { usePatreonUrl } from "../hooks/usePatreonUrl";
+import PatreonBanner from "./PatreonBanner";
 
 export default function Header() {
   const { login, clear, loginStatus, identity } = useInternetIdentity();
   const queryClient = useQueryClient();
   const isAuthenticated = !!identity;
   const isLoggingIn = loginStatus === "logging-in";
+  const patreonUrl = usePatreonUrl();
 
   const handleAuth = async () => {
     if (isAuthenticated) {
@@ -48,6 +51,7 @@ export default function Header() {
         </Link>
 
         <nav className="flex items-center gap-2">
+          {patreonUrl && <PatreonBanner variant="slim" />}
           {isAuthenticated && (
             <Link to="/orders">
               <Button

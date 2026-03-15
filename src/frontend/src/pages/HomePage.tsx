@@ -13,6 +13,7 @@ import { Search, ShoppingCart, Terminal } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import MatrixRain from "../components/MatrixRain";
+import PatreonBanner from "../components/PatreonBanner";
 import { useGetAllProducts } from "../hooks/useQueries";
 
 const SAMPLE_TAGS = ["FPS", "RPG", "Battle Royale", "MOBA", "MMO", "Sports"];
@@ -99,6 +100,9 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Patreon top banner */}
+      <PatreonBanner variant="hero" />
+
       {/* Products Grid */}
       <section className="container mx-auto px-4 py-10">
         {isLoading ? (
@@ -131,7 +135,7 @@ export default function HomePage() {
             >
               {search ? "// NO RESULTS FOUND" : "// NO PRODUCTS YET"}
             </h3>
-            <p className="text-muted-foreground text-sm font-mono">
+            <p className="text-sm text-muted-foreground font-mono">
               {search
                 ? `No accounts match "${search}"`
                 : "Check back soon for new listings."}
@@ -203,6 +207,13 @@ export default function HomePage() {
                 </motion.div>
               ))}
             </div>
+
+            {/* Mid-page Patreon banner */}
+            {filtered.length > 3 && (
+              <div className="mt-10">
+                <PatreonBanner variant="inline" />
+              </div>
+            )}
           </>
         )}
       </section>

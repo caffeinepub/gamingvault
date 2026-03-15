@@ -12,8 +12,34 @@ interface TerminalLine {
   alert?: boolean;
 }
 
-// Regex: exactly 2 letters then exactly 5 digits
-const CPM_ID_REGEX = /^[A-Za-z]{2}\d{5}$/;
+interface UserProfile {
+  name: string;
+  email: string;
+}
+
+// Regex: exactly 2 letters then exactly 6 digits
+const CPM_ID_REGEX = /^[A-Za-z]{2}\d{6}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const PROFILES_KEY = "cpmUserProfiles";
+
+function getProfiles(): Record<string, UserProfile> {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILES_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveProfile(id: string, profile: UserProfile) {
+  const profiles = getProfiles();
+  profiles[id] = profile;
+  localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+}
+
+function getProfile(id: string): UserProfile | null {
+  return getProfiles()[id] || null;
+}
 
 // Lines printed before the ID gate appears
 const GATE_AFTER = 16;
@@ -167,19 +193,15 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
     setPowered(true);
     setActivated(true);
 
-    // After brief flash, de-activate glow burst
     setTimeout(() => setActivated(false), 400);
 
     const timers: ReturnType<typeof setTimeout>[] = [];
-    // Show each status line every ~500ms
     BOOT_STATUS_LINES.forEach((_, i) => {
       timers.push(setTimeout(() => setVisibleLines(i + 1), 300 + i * 500));
     });
-    // Start fade after all lines shown
     timers.push(
       setTimeout(() => setFading(true), 300 + BOOT_STATUS_LINES.length * 500),
     );
-    // Call onDone after fade
     timers.push(
       setTimeout(
         () => onDoneRef.current(),
@@ -205,7 +227,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
         transition: "opacity 0.7s ease",
       }}
     >
-      {/* Boot logo */}
       <div
         style={{
           fontFamily: "'Share Tech Mono', monospace",
@@ -222,7 +243,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
         H4CK.FST
       </div>
 
-      {/* Clickable power button */}
       {!powered && (
         <button
           type="button"
@@ -241,7 +261,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
           }}
           aria-label="Power on H4CK.FST"
         >
-          {/* Glowing circle surround */}
           <div
             style={{
               width: "110px",
@@ -274,7 +293,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
                 animation: "powerPulse 2s ease-in-out infinite",
               }}
             >
-              {/* Vertical line at top */}
               <line
                 x1="40"
                 y1="12"
@@ -284,7 +302,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
                 strokeWidth="5"
                 strokeLinecap="round"
               />
-              {/* Circular arc (power symbol) */}
               <path
                 d="M 24 22 A 22 22 0 1 0 56 22"
                 stroke="#00ff41"
@@ -294,8 +311,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
               />
             </svg>
           </div>
-
-          {/* Blinking press label */}
           <span
             style={{
               fontFamily: "'Share Tech Mono', monospace",
@@ -312,7 +327,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
         </button>
       )}
 
-      {/* Power activated — show non-interactive icon + boot lines */}
       {powered && (
         <>
           <div
@@ -352,8 +366,6 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
               />
             </svg>
           </div>
-
-          {/* Boot status lines */}
           <div
             style={{
               display: "flex",
@@ -384,12 +396,8 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
 
       <style>{`
         @keyframes powerPulse {
-          0%, 100% {
-            filter: drop-shadow(0 0 14px #00ff41) drop-shadow(0 0 40px rgba(0,255,65,0.6));
-          }
-          50% {
-            filter: drop-shadow(0 0 28px #00ff41) drop-shadow(0 0 80px rgba(0,255,65,0.9)) drop-shadow(0 0 120px rgba(0,255,65,0.4));
-          }
+          0%, 100% { filter: drop-shadow(0 0 14px #00ff41) drop-shadow(0 0 40px rgba(0,255,65,0.6)); }
+          50% { filter: drop-shadow(0 0 28px #00ff41) drop-shadow(0 0 80px rgba(0,255,65,0.9)) drop-shadow(0 0 120px rgba(0,255,65,0.4)); }
         }
         @keyframes powerRingPulse {
           0%, 100% { box-shadow: 0 0 20px rgba(0,255,65,0.2), inset 0 0 10px rgba(0,255,65,0.05); }
@@ -422,7 +430,7 @@ function PowerOnScreen({ onDone }: { onDone: () => void }) {
 
 // ─── Main cutscene ────────────────────────────────────────────────────────────
 export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
-  // Always clear any stored Player ID so the gate shows fresh on every visit
+  // Always clear session so the gate shows fresh on every visit
   useEffect(() => {
     sessionStorage.removeItem("cpmPlayerId");
   }, []);
@@ -438,14 +446,25 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
   });
   const [blinkVisible, setBlinkVisible] = useState<boolean>(true);
 
-  // ID gate state — always false on mount (sessionStorage cleared above)
+  // ── Gate: Player ID step ──
+  const [gateStep, setGateStep] = useState<"id" | "profile" | "done">("id");
   const [gateVisible, setGateVisible] = useState<boolean>(false);
   const [cpmId, setCpmId] = useState<string>("");
   const [gateError, setGateError] = useState<string>("");
   const [idConfirmed, setIdConfirmed] = useState<boolean>(false);
+  const [welcomeBack, setWelcomeBack] = useState<{
+    name: string;
+    id: string;
+  } | null>(null);
+
+  // ── Gate: Profile step (new users) ──
+  const [profileName, setProfileName] = useState<string>("");
+  const [profileEmail, setProfileEmail] = useState<string>("");
+  const [profileError, setProfileError] = useState<string>("");
 
   const terminalRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const idInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const durationRef = useRef<number>(Math.random() * 35000 + 45000);
   const startTimeRef = useRef<number>(Date.now());
   const completedRef = useRef<boolean>(false);
@@ -457,7 +476,6 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
     if (completedRef.current) return;
     if (!sessionStorage.getItem("cpmPlayerId")) return;
     completedRef.current = true;
-
     onComplete();
   }, [onComplete]);
 
@@ -486,6 +504,12 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
   }, [finish, phase]);
 
   useEffect(() => {
+    if (progress >= 1 && idConfirmed) {
+      finish();
+    }
+  }, [progress, idConfirmed, finish]);
+
+  useEffect(() => {
     if (phase !== "terminal") return;
     const start = Date.now();
     const duration = durationRef.current;
@@ -497,13 +521,11 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
       const now = Date.now();
       const delta = now - lastFrameTime;
       lastFrameTime = now;
-
       if (pausedRef.current) {
         pausedTime += delta;
         raf = requestAnimationFrame(animate);
         return;
       }
-
       const elapsed = now - start - pausedTime;
       const p = Math.min(elapsed / duration, 1);
       setProgress(p);
@@ -521,7 +543,6 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
 
     const showNext = () => {
       if (stopped || completedRef.current) return;
-
       if (pausedRef.current) {
         resumeRef.current = showNext;
         return;
@@ -551,6 +572,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
       if (poolIdx === GATE_AFTER && !sessionStorage.getItem("cpmPlayerId")) {
         pausedRef.current = true;
         setGateVisible(true);
+        setGateStep("id");
         resumeRef.current = () => {
           timeout = setTimeout(showNext, 80);
         };
@@ -569,12 +591,15 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
   }, [phase]);
 
   useEffect(() => {
-    if (gateVisible && inputRef.current) {
-      inputRef.current.focus();
+    if (gateVisible && gateStep === "id" && idInputRef.current) {
+      idInputRef.current.focus();
     }
-  }, [gateVisible]);
+    if (gateVisible && gateStep === "profile" && nameInputRef.current) {
+      nameInputRef.current.focus();
+    }
+  }, [gateVisible, gateStep]);
 
-  const handleConfirm = useCallback(() => {
+  const handleIdConfirm = useCallback(() => {
     const trimmed = cpmId.trim().toUpperCase();
     if (!trimmed) {
       setGateError("> ERROR: PLAYER ID REQUIRED. ACCESS DENIED.");
@@ -582,29 +607,76 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
     }
     if (!CPM_ID_REGEX.test(trimmed)) {
       setGateError(
-        "> ERROR: INVALID FORMAT. EXPECTED 2 LETTERS + 5 NUMBERS (e.g. AB12345).",
+        "> ERROR: INVALID FORMAT. EXPECTED 2 LETTERS + 6 NUMBERS (e.g. AB123456).",
       );
       return;
     }
-    sessionStorage.setItem("cpmPlayerId", trimmed);
+
+    // Check if existing user
+    const existing = getProfile(trimmed);
+    if (existing) {
+      // Returning user -- show welcome back and proceed
+      setWelcomeBack({ name: existing.name, id: trimmed });
+      sessionStorage.setItem("cpmPlayerId", trimmed);
+      setIdConfirmed(true);
+      setGateVisible(false);
+      setGateStep("done");
+      setGateError("");
+      pausedRef.current = false;
+      if (resumeRef.current) {
+        resumeRef.current();
+        resumeRef.current = null;
+      }
+    } else {
+      // New user -- ask for name + email
+      setGateError("");
+      setGateStep("profile");
+    }
+  }, [cpmId]);
+
+  const handleProfileConfirm = useCallback(() => {
+    const name = profileName.trim();
+    const email = profileEmail.trim();
+    if (!name) {
+      setProfileError("> ERROR: NAME IS REQUIRED.");
+      return;
+    }
+    if (!email || !EMAIL_REGEX.test(email)) {
+      setProfileError("> ERROR: VALID EMAIL IS REQUIRED.");
+      return;
+    }
+    const trimmedId = cpmId.trim().toUpperCase();
+    saveProfile(trimmedId, { name, email });
+    sessionStorage.setItem("cpmPlayerId", trimmedId);
     setIdConfirmed(true);
     setGateVisible(false);
-    setGateError("");
+    setGateStep("done");
+    setProfileError("");
     pausedRef.current = false;
     if (resumeRef.current) {
       resumeRef.current();
       resumeRef.current = null;
     }
-  }, [cpmId]);
+  }, [cpmId, profileName, profileEmail]);
 
-  const handleKeyDown = useCallback(
+  const handleIdKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
         e.stopPropagation();
-        handleConfirm();
+        handleIdConfirm();
       }
     },
-    [handleConfirm],
+    [handleIdConfirm],
+  );
+
+  const handleProfileKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.stopPropagation();
+        handleProfileConfirm();
+      }
+    },
+    [handleProfileConfirm],
   );
 
   useEffect(() => {
@@ -658,6 +730,21 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
   const remaining = Math.max(0, durationRef.current - elapsed);
   const remainingSecs = Math.ceil(remaining / 1000);
 
+  const inputStyle: React.CSSProperties = {
+    flex: 1,
+    background: "rgba(0,10,0,0.9)",
+    border: "1px solid #00ff41",
+    color: "#00ff41",
+    fontFamily: "'Share Tech Mono', monospace",
+    fontSize: "0.82rem",
+    padding: "8px 12px",
+    outline: "none",
+    boxShadow: "0 0 10px rgba(0,255,65,0.3)",
+    caretColor: "#00ff41",
+    width: "100%",
+    marginBottom: "6px",
+  };
+
   return (
     <div
       style={{
@@ -671,7 +758,6 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
     >
       <MatrixRain className="absolute inset-0 w-full h-full opacity-40" />
 
-      {/* Scanlines */}
       <div
         style={{
           position: "absolute",
@@ -682,8 +768,6 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
           zIndex: 1,
         }}
       />
-
-      {/* Flash */}
       <div
         style={{
           position: "absolute",
@@ -695,14 +779,11 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
         }}
       />
 
-      {/* Content layer */}
       <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
-        {/* ── BOOT SCREEN ── */}
         {phase === "boot" && (
           <PowerOnScreen onDone={() => setPhase("terminal")} />
         )}
 
-        {/* ── TERMINAL ── */}
         {phase === "terminal" && (
           <div
             style={{
@@ -840,8 +921,27 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
                   </div>
                 ))}
 
-                {/* ID Gate prompt */}
-                {gateVisible && (
+                {/* Welcome back message */}
+                {welcomeBack && (
+                  <div
+                    style={{
+                      marginTop: "10px",
+                      color: "#afffbc",
+                      fontWeight: 700,
+                      textShadow:
+                        "0 0 20px #00ff41, 0 0 50px rgba(0,255,65,0.7)",
+                      fontSize: "0.88rem",
+                      animation:
+                        "brightPulse 1s ease-in-out infinite alternate",
+                    }}
+                  >
+                    &gt;&gt;&gt; WELCOME BACK {welcomeBack.name.toUpperCase()} [
+                    {welcomeBack.id}] &lt;&lt;&lt;
+                  </div>
+                )}
+
+                {/* Gate: Player ID step */}
+                {gateVisible && gateStep === "id" && (
                   <div
                     data-gate="true"
                     style={{
@@ -882,7 +982,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
                         marginBottom: "12px",
                       }}
                     >
-                      &gt; FORMAT: 2 LETTERS + 5 NUMBERS &nbsp;(e.g. AB12345)
+                      &gt; FORMAT: 2 LETTERS + 6 NUMBERS &nbsp;(e.g. AB123456)
                     </div>
                     <div
                       style={{
@@ -892,7 +992,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
                       }}
                     >
                       <input
-                        ref={inputRef}
+                        ref={idInputRef}
                         data-ocid="cutscene.input"
                         type="text"
                         value={cpmId}
@@ -900,9 +1000,9 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
                           setCpmId(e.target.value);
                           if (gateError) setGateError("");
                         }}
-                        onKeyDown={handleKeyDown}
-                        placeholder="e.g. AB12345"
-                        maxLength={7}
+                        onKeyDown={handleIdKeyDown}
+                        placeholder="e.g. AB123456"
+                        maxLength={8}
                         style={{
                           flex: 1,
                           background: "rgba(0,10,0,0.9)",
@@ -922,7 +1022,7 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
                         data-ocid="cutscene.primary_button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleConfirm();
+                          handleIdConfirm();
                         }}
                         style={{
                           background: "#00ff41",
@@ -961,6 +1061,154 @@ export default function HackingCutscene({ onComplete }: HackingCutsceneProps) {
                         }}
                       >
                         {gateError}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Gate: Profile step (new user) */}
+                {gateVisible && gateStep === "profile" && (
+                  <div
+                    data-gate="true"
+                    style={{
+                      marginTop: "12px",
+                      padding: "14px 16px",
+                      border: "1px solid rgba(0,255,65,0.6)",
+                      background: "rgba(0,20,0,0.95)",
+                      boxShadow:
+                        "0 0 20px rgba(0,255,65,0.3), inset 0 0 10px rgba(0,255,65,0.05)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: "#ffcc00",
+                        textShadow: "0 0 10px #ffcc00",
+                        marginBottom: "6px",
+                        fontSize: "0.82rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      &gt; NEW OPERATIVE DETECTED -- REGISTRATION REQUIRED
+                    </div>
+                    <div
+                      style={{
+                        color: "rgba(0,255,65,0.7)",
+                        fontSize: "0.74rem",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      &gt; PLAYER ID:{" "}
+                      <span style={{ color: "#afffbc", fontWeight: 700 }}>
+                        {cpmId.trim().toUpperCase()}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        color: "#00ff41",
+                        fontSize: "0.78rem",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      &gt; ENTER YOUR NAME:
+                    </div>
+                    <input
+                      ref={nameInputRef}
+                      data-ocid="cutscene.profile_name_input"
+                      type="text"
+                      value={profileName}
+                      onChange={(e) => {
+                        setProfileName(e.target.value);
+                        if (profileError) setProfileError("");
+                      }}
+                      onKeyDown={handleProfileKeyDown}
+                      placeholder="Your name"
+                      style={{ ...inputStyle }}
+                    />
+                    <div
+                      style={{
+                        color: "#00ff41",
+                        fontSize: "0.78rem",
+                        marginBottom: "4px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      &gt; ENTER YOUR EMAIL:
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <input
+                        data-ocid="cutscene.profile_email_input"
+                        type="email"
+                        value={profileEmail}
+                        onChange={(e) => {
+                          setProfileEmail(e.target.value);
+                          if (profileError) setProfileError("");
+                        }}
+                        onKeyDown={handleProfileKeyDown}
+                        placeholder="your@email.com"
+                        style={{
+                          flex: 1,
+                          background: "rgba(0,10,0,0.9)",
+                          border: "1px solid #00ff41",
+                          color: "#00ff41",
+                          fontFamily: "'Share Tech Mono', monospace",
+                          fontSize: "0.82rem",
+                          padding: "8px 12px",
+                          outline: "none",
+                          boxShadow: "0 0 10px rgba(0,255,65,0.3)",
+                          caretColor: "#00ff41",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        data-ocid="cutscene.profile_submit_button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleProfileConfirm();
+                        }}
+                        style={{
+                          background: "#00ff41",
+                          color: "#000",
+                          border: "none",
+                          fontFamily: "'Share Tech Mono', monospace",
+                          fontSize: "0.82rem",
+                          fontWeight: 700,
+                          padding: "8px 20px",
+                          cursor: "pointer",
+                          letterSpacing: "0.08em",
+                          boxShadow: "0 0 16px rgba(0,255,65,0.7)",
+                          transition: "background 0.15s",
+                          whiteSpace: "nowrap",
+                        }}
+                        onMouseEnter={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "#afffbc";
+                        }}
+                        onMouseLeave={(e) => {
+                          (
+                            e.currentTarget as HTMLButtonElement
+                          ).style.background = "#00ff41";
+                        }}
+                      >
+                        REGISTER
+                      </button>
+                    </div>
+                    {profileError && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          color: "#ff3333",
+                          textShadow: "0 0 8px #ff0000",
+                          fontSize: "0.76rem",
+                        }}
+                      >
+                        {profileError}
                       </div>
                     )}
                   </div>

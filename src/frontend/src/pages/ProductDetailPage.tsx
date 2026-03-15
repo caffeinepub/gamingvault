@@ -9,9 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  Bitcoin,
   CheckCircle,
-  CreditCard,
   Gamepad2,
   Loader2,
   ShoppingCart,
@@ -19,6 +17,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import type { PaymentMethod } from "../backend.d";
+import PatreonBanner from "../components/PatreonBanner";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useGetPaymentInstructions,
@@ -35,19 +34,19 @@ const PAYMENT_METHODS = [
     key: "bitcoin",
     label: "Bitcoin",
     placeholder: "Your Bitcoin wallet address",
-    icon: "₿",
+    icon: "\u20BF",
   },
   {
     key: "ethereum",
     label: "Ethereum",
     placeholder: "Your Ethereum wallet address (0x...)",
-    icon: "Ξ",
+    icon: "\u039E",
   },
   {
     key: "amazon_gift_card",
     label: "Amazon Gift Card",
     placeholder: "Gift card code",
-    icon: "🎁",
+    icon: "\uD83C\uDF81",
   },
   {
     key: "paypal",
@@ -59,7 +58,7 @@ const PAYMENT_METHODS = [
     key: "nexus_bank",
     label: "Nexus Bank",
     placeholder: "Your Nexus Bank ID (numbers only)",
-    icon: "🏦",
+    icon: "\uD83C\uDFE6",
   },
 ] as const;
 
@@ -229,6 +228,9 @@ export default function ProductDetailPage() {
       </Link>
 
       <div className="grid gap-6">
+        {/* Patreon banner above product */}
+        <PatreonBanner variant="inline" />
+
         {/* Product Info */}
         <Card className="bg-card border-border">
           <CardContent className="pt-6">
@@ -356,6 +358,9 @@ export default function ProductDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Patreon banner below product details */}
+        <PatreonBanner variant="inline" />
       </div>
     </div>
   );

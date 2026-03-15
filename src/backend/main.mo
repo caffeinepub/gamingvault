@@ -46,8 +46,8 @@ actor {
     id : ProductId;
     title : Text;
     description : Text;
-    price : Nat; // Price in USD cents for consistency
-    accountDetails : Text; // Gaming account details
+    price : Nat;
+    accountDetails : Text;
     createdAt : Timestamp;
   };
 
@@ -89,6 +89,9 @@ actor {
   var productCount : ProductId = 0;
   var orderCount : OrderId = 0;
 
+  // Staff passcode (same as frontend)
+  let STAFF_PASSCODE : Text = "2006";
+
   var paymentInstructions = {
     bitcoin = "Default Bitcoin instructions";
     ethereum = "Default Ethereum instructions";
@@ -99,6 +102,20 @@ actor {
 
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
+
+  // Staff registers themselves as admin by providing the staff passcode.
+  // Any authenticated user who provides the correct passcode gets admin access.
+  public shared ({ caller }) func registerStaff(passcode : Text) : async () {
+    if (caller.isAnonymous()) {
+      Runtime.trap("Must be authenticated to register as staff");
+    };
+    if (passcode != STAFF_PASSCODE) {
+      Runtime.trap("Invalid staff passcode");
+    };
+    accessControlState.userRoles.add(caller, #admin);
+    // Ensure adminAssigned is set so normal init doesn't override
+    accessControlState.adminAssigned := true;
+  };
 
   public shared ({ caller }) func addProduct(title : Text, description : Text, price : Nat, accountDetails : Text) : async ProductId {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {

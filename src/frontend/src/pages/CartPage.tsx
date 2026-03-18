@@ -20,7 +20,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { Coupon, PaymentMethod } from "../backend.d";
+import type { Coupon, PaymentMethod } from "../backend";
 import PatreonBanner from "../components/PatreonBanner";
 import { useCart } from "../context/CartContext";
 import { useCurrency } from "../hooks/useCurrency";
@@ -538,6 +538,8 @@ export default function CartPage() {
         const id = await placeOrder.mutateAsync({
           productId: item.productId,
           paymentMethod: pm,
+          buyerAnswer: answer || undefined,
+          creditUsed: appliedCredit,
         });
         ids.push(id);
       }

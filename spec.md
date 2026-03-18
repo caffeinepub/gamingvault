@@ -1,28 +1,26 @@
 # H4CK.FST
 
 ## Current State
-The store displays all prices in USD (`$`) using a hardcoded `formatPrice` function in `HomePage.tsx` and `ProductDetailPage.tsx`. There is no currency selector in the UI and no currency context.
+The app is a hacker/Matrix-themed ecommerce store. The credit system currently only tracks credit from redeemed gift card codes. The staff panel has no way to manually add credit to a user's account.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `CurrencyContext` (`src/frontend/src/hooks/useCurrency.tsx`) providing selected currency (GBP £, USD $, EUR €), a setter, and a `formatPrice(cents: bigint)` helper that converts and formats using hardcoded exchange rates (USD base: GBP=0.79, EUR=0.92).
-- Currency selector dropdown in the `Header` nav bar (between Patreon button and My Orders button) showing the current symbol and allowing switching.
-- Persist selected currency to `localStorage` key `hfst_currency`.
+- `CreditAdjustment` type: amount, reason (Manual Refund | Compensation | Other | Payment for Promotion), notes (required), isPromoPayment flag, timestamp, targetUser
+- `addCreditToUser(user, amount, reason, notes, isPromoPayment)` backend function - admin only
+- `getCreditAdjustments(user)` backend function - admin or self
+- `getAllRegisteredUsers()` backend function - admin only, returns list of users with name/email/playerId for search
+- Update `getUserCredit` to include manual credit adjustments in the total
+- Staff panel "Credits" tab: search users by name/email/player ID, form to add credit with amount, required reason dropdown, required notes, optional "Payment for Promotion" checkbox
 
 ### Modify
-- `Header.tsx`: add currency selector UI element.
-- `HomePage.tsx`: replace local `formatPrice` with `useCurrency().formatPrice`.
-- `ProductDetailPage.tsx`: replace local `formatPrice` with `useCurrency().formatPrice`; update "Buy Now" button price display.
-- `App.tsx` (or root layout): wrap app in `CurrencyProvider`.
+- `getUserCredit` - sum gift card redemptions + manual adjustments
+- Backend user registration to store playerId for search
 
 ### Remove
-- Local `formatPrice` functions in `HomePage.tsx` and `ProductDetailPage.tsx`.
+- Nothing
 
 ## Implementation Plan
-1. Create `src/frontend/src/hooks/useCurrency.tsx` with context, provider, hook, and `formatPrice` utility.
-2. Wrap app root in `CurrencyProvider`.
-3. Add compact currency toggle (£ / $ / €) in `Header.tsx` nav.
-4. Update `HomePage.tsx` to use `useCurrency().formatPrice`.
-5. Update `ProductDetailPage.tsx` to use `useCurrency().formatPrice` everywhere prices are displayed.
-6. Validate (lint + typecheck + build).
+1. Update backend Motoko: add CreditAdjustment type, creditAdjustments map, addCreditToUser, getCreditAdjustments, getAllRegisteredUsers functions, update getUserCredit
+2. Update frontend StaffPage: add Credits tab with user search and add credit form
+3. Validate and deploy

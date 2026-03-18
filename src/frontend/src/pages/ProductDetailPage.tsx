@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { PaymentMethod } from "../backend.d";
+import type { PaymentMethod } from "../backend";
 import PatreonBanner from "../components/PatreonBanner";
 import { useCart } from "../context/CartContext";
 import { useCurrency } from "../hooks/useCurrency";

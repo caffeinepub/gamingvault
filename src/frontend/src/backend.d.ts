@@ -16,6 +16,7 @@ export interface Product {
     giftCardValue: bigint;
     price: bigint;
     accountDetails: string;
+    customQuestion: [] | [string];
 }
 export type Timestamp = bigint;
 export type PaymentMethod = {
@@ -43,6 +44,7 @@ export interface Coupon {
 }
 export interface BuyerContactDetails {
     email?: string;
+    playerId?: string;
 }
 export type PayPalEmail = string;
 export interface GiftCardCode {
@@ -62,6 +64,8 @@ export interface Order {
     productId: ProductId;
     buyer: Principal;
     productPrice: bigint;
+    buyerAnswer: [] | [string];
+    creditUsed: bigint;
 }
 export type ClientAddress = string;
 export type OrderStatus = {
@@ -90,23 +94,52 @@ export enum UserRole {
     user = "user",
     guest = "guest"
 }
+export type CreditReason = {
+    __kind__: "manualRefund";
+    manualRefund: null;
+} | {
+    __kind__: "compensation";
+    compensation: null;
+} | {
+    __kind__: "promoPayment";
+    promoPayment: null;
+} | {
+    __kind__: "other";
+    other: string;
+};
+export interface RegisteredUser {
+    principal: Principal;
+    name: string;
+    email?: string;
+    playerId?: string;
+}
+export interface CreditAdjustment {
+    amount: bigint;
+    reason: CreditReason;
+    notes: string;
+    isPromoPayment: boolean;
+    createdAt: Timestamp;
+}
 export interface backendInterface {
     acceptOrder(orderId: OrderId): Promise<void>;
     addCoupon(code: string, discountType: DiscountType, value: bigint): Promise<void>;
-    addProduct(title: string, description: string, price: bigint, accountDetails: string, isGiftCard: boolean | null, giftCardValue: bigint | null): Promise<ProductId>;
+    addCreditToUser(targetUser: Principal, amount: bigint, reason: CreditReason, notes: string, isPromoPayment: boolean): Promise<void>;
+    addProduct(title: string, description: string, price: bigint, accountDetails: string, isGiftCard: boolean | null, giftCardValue: bigint | null, customQuestion: string | null): Promise<ProductId>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     declineOrder(orderId: OrderId): Promise<void>;
     deleteCoupon(code: string): Promise<void>;
     deleteProduct(id: ProductId): Promise<void>;
-    editProduct(id: ProductId, title: string, description: string, price: bigint, accountDetails: string, isGiftCard: boolean | null, giftCardValue: bigint | null): Promise<void>;
+    editProduct(id: ProductId, title: string, description: string, price: bigint, accountDetails: string, isGiftCard: boolean | null, giftCardValue: bigint | null, customQuestion: string | null): Promise<void>;
     generateGiftCardCode(orderId: OrderId): Promise<string>;
     getAllCoupons(): Promise<Array<Coupon>>;
     getAllGiftCardCodes(): Promise<Array<GiftCardCode>>;
     getAllOrders(): Promise<Array<Order>>;
     getAllProducts(): Promise<Array<Product>>;
+    getAllRegisteredUsers(): Promise<Array<RegisteredUser>>;
     getBuyerContactDetails(buyer: Principal): Promise<BuyerContactDetails>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getCreditAdjustments(user: Principal): Promise<Array<CreditAdjustment>>;
     getGiftCardCodeForOrder(orderId: OrderId): Promise<string>;
     getOrder(orderId: OrderId): Promise<Order>;
     getOrderAccountDetails(orderId: OrderId): Promise<string>;
@@ -117,10 +150,10 @@ export interface backendInterface {
     getUserCredit(user: Principal): Promise<bigint>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
-    placeOrder(productId: ProductId, paymentMethod: PaymentMethod): Promise<OrderId>;
+    placeOrder(productId: ProductId, paymentMethod: PaymentMethod, buyerAnswer: string | null, creditUsed: bigint): Promise<OrderId>;
     redeemGiftCardCode(code: string): Promise<bigint>;
     registerStaff(passcode: string): Promise<void>;
-    saveBuyerContactDetails(email: string | null): Promise<void>;
+    saveBuyerContactDetails(email: string | null, playerId: string | null): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setPaymentInstructions(method: string, instructions: string): Promise<void>;
     validateCoupon(code: string): Promise<Coupon | null>;

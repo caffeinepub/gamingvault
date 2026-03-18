@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle,
   Clock,
+  Coins,
   Copy,
   CreditCard,
   Edit2,
@@ -27,6 +28,7 @@ import {
   Lock,
   Package,
   Plus,
+  Search,
   ShieldCheck,
   ShoppingBag,
   Tag,
@@ -36,14 +38,16 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { Order, Product } from "../backend.d";
-import { DiscountType } from "../backend.d";
+import type { Order, Product } from "../backend";
+import { DiscountType } from "../backend";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { usePatreonUrlEditor } from "../hooks/usePatreonUrl";
+import type { CreditReason, RegisteredUser } from "../hooks/useQueries";
 import {
   useAcceptOrder,
   useAddCoupon,
+  useAddCreditToUser,
   useAddProduct,
   useDeclineOrder,
   useDeleteCoupon,
@@ -52,6 +56,7 @@ import {
   useGetAllCoupons,
   useGetAllOrders,
   useGetAllProducts,
+  useGetAllRegisteredUsers,
   useGetPaymentInstructions,
   useSetPaymentInstructions,
 } from "../hooks/useQueries";
@@ -319,6 +324,10 @@ function ProductForm({
           accountDetails: isGiftCard ? "[GIFT CARD]" : accountDetails.trim(),
           isGiftCard,
           giftCardValue: gcValueCents,
+          customQuestion:
+            askBuyerQuestion && buyerQuestion.trim()
+              ? buyerQuestion.trim()
+              : undefined,
         });
         setBuyerQuestion(editProduct.id, askBuyerQuestion ? buyerQuestion : "");
         toast.success("Product updated!");
@@ -330,6 +339,10 @@ function ProductForm({
           accountDetails: isGiftCard ? "[GIFT CARD]" : accountDetails.trim(),
           isGiftCard,
           giftCardValue: gcValueCents,
+          customQuestion:
+            askBuyerQuestion && buyerQuestion.trim()
+              ? buyerQuestion.trim()
+              : undefined,
         });
         setBuyerQuestion(
           newId as bigint,
@@ -1161,6 +1174,264 @@ function PatreonSettingsTab() {
 }
 
 // ---- COUPONS TAB ----
+
+function CreditsTab() {
+  const { data: users = [], isLoading } = useGetAllRegisteredUsers();
+  const addCredit = useAddCreditToUser();
+
+  const [search, setSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState<RegisteredUser | null>(null);
+  const [amount, setAmount] = useState("");
+  const [reasonType, setReasonType] = useState<
+    "manualRefund" | "compensation" | "promoPayment" | "other"
+  >("manualRefund");
+  const [otherReason, setOtherReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [isPromo, setIsPromo] = useState(false);
+
+  const filtered = users.filter((u) => {
+    const q = search.toLowerCase();
+    return (
+      u.name.toLowerCase().includes(q) ||
+      (u.email ?? "").toLowerCase().includes(q) ||
+      (u.playerId ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const handleReasonChange = (v: string) => {
+    const r = v as typeof reasonType;
+    setReasonType(r);
+    setIsPromo(r === "promoPayment");
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    const amountNum = Number.parseFloat(amount);
+    if (!amount || Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    if (!notes.trim()) {
+      toast.error("Notes are required");
+      return;
+    }
+    if (reasonType === "other" && !otherReason.trim()) {
+      toast.error("Please describe the reason");
+      return;
+    }
+
+    let reason: CreditReason;
+    if (reasonType === "manualRefund")
+      reason = { __kind__: "manualRefund", manualRefund: null };
+    else if (reasonType === "compensation")
+      reason = { __kind__: "compensation", compensation: null };
+    else if (reasonType === "promoPayment")
+      reason = { __kind__: "promoPayment", promoPayment: null };
+    else reason = { __kind__: "other", other: otherReason.trim() };
+
+    const amountBig = BigInt(Math.round(amountNum * 100));
+
+    try {
+      await addCredit.mutateAsync({
+        targetUser: selectedUser.principal,
+        amount: amountBig,
+        reason,
+        notes: notes.trim(),
+        isPromoPayment: isPromo,
+      });
+      toast.success(
+        `£${amountNum.toFixed(2)} credit added to ${selectedUser.name}`,
+      );
+      setAmount("");
+      setNotes("");
+      setOtherReason("");
+      setReasonType("manualRefund");
+      setIsPromo(false);
+      setSelectedUser(null);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to add credit");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="border-border bg-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-primary font-mono text-lg">
+            <Coins className="w-5 h-5" />
+            Add Credit to User
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, email or Player ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+              data-ocid="credits.search_input"
+            />
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2" data-ocid="credits.loading_state">
+              {["a", "b", "c"].map((k) => (
+                <Skeleton key={k} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {filtered.length === 0 ? (
+                <p
+                  className="text-muted-foreground text-sm py-4 text-center"
+                  data-ocid="credits.empty_state"
+                >
+                  No users found
+                </p>
+              ) : (
+                filtered.map((u, idx) => (
+                  <button
+                    key={u.principal.toString()}
+                    type="button"
+                    onClick={() =>
+                      setSelectedUser(
+                        selectedUser?.principal.toString() ===
+                          u.principal.toString()
+                          ? null
+                          : u,
+                      )
+                    }
+                    className={`w-full text-left px-3 py-2 rounded border text-sm transition-colors ${
+                      selectedUser?.principal.toString() ===
+                      u.principal.toString()
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border hover:border-primary/50 hover:bg-muted"
+                    }`}
+                    data-ocid={`credits.item.${idx + 1}`}
+                  >
+                    <div className="font-medium">{u.name}</div>
+                    <div className="text-xs text-muted-foreground flex gap-3 mt-0.5">
+                      {u.email && <span>{u.email}</span>}
+                      {u.playerId && <span>ID: {u.playerId}</span>}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {selectedUser && (
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4 pt-2 border-t border-border"
+            >
+              <div className="text-sm font-medium text-primary font-mono">
+                Adding credit to: {selectedUser.name}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="credit-amount">Amount (£)</Label>
+                  <Input
+                    id="credit-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="e.g. 5.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    data-ocid="credits.input"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="credit-reason">Reason</Label>
+                  <Select value={reasonType} onValueChange={handleReasonChange}>
+                    <SelectTrigger
+                      id="credit-reason"
+                      data-ocid="credits.select"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="manualRefund">
+                        Manual Refund
+                      </SelectItem>
+                      <SelectItem value="compensation">Compensation</SelectItem>
+                      <SelectItem value="promoPayment">
+                        Payment for Promotion
+                      </SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {reasonType === "other" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="credit-other-reason">Describe reason</Label>
+                  <Input
+                    id="credit-other-reason"
+                    placeholder="e.g. Goodwill gesture"
+                    value={otherReason}
+                    onChange={(e) => setOtherReason(e.target.value)}
+                    data-ocid="credits.textarea"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="credit-notes">Notes (required)</Label>
+                <Textarea
+                  id="credit-notes"
+                  placeholder="e.g. Refund for order #123 - product not delivered"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  data-ocid="credits.textarea"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="credit-promo"
+                  checked={isPromo}
+                  onCheckedChange={(v) => setIsPromo(!!v)}
+                  data-ocid="credits.checkbox"
+                />
+                <Label htmlFor="credit-promo" className="cursor-pointer">
+                  This is a Payment for Promotion (creator/promoter payment)
+                </Label>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={addCredit.isPending}
+                className="w-full"
+                data-ocid="credits.submit_button"
+              >
+                {addCredit.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Adding Credit...
+                  </>
+                ) : (
+                  <>
+                    <Coins className="w-4 h-4 mr-2" />
+                    Add Credit
+                  </>
+                )}
+              </Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function CouponsTab() {
   const { data: coupons = [], isLoading } = useGetAllCoupons();
   const addCoupon = useAddCoupon();
@@ -1452,6 +1723,14 @@ function StaffDashboard() {
             Coupons
           </TabsTrigger>
           <TabsTrigger
+            value="credits"
+            className="gap-1.5"
+            data-ocid="staff.credits.tab"
+          >
+            <Coins className="w-3.5 h-3.5" />
+            Credits
+          </TabsTrigger>
+          <TabsTrigger
             value="patreon"
             className="gap-1.5"
             data-ocid="staff.patreon.tab"
@@ -1471,6 +1750,9 @@ function StaffDashboard() {
         </TabsContent>
         <TabsContent value="coupons">
           <CouponsTab />
+        </TabsContent>
+        <TabsContent value="credits">
+          <CreditsTab />
         </TabsContent>
         <TabsContent value="patreon">
           <PatreonSettingsTab />

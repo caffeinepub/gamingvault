@@ -20,9 +20,11 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import type { Order } from "../backend.d";
+import type { Order } from "../backend";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
+  useGetAllProducts,
+  useGetGiftCardCodeForOrder,
   useGetMyOrders,
   useGetOrderAccountDetails,
   useGetUserCredit,
@@ -109,6 +111,51 @@ function AccountDetailsRow({ orderId }: { orderId: bigint }) {
           </AlertDescription>
         </Alert>
       )}
+    </div>
+  );
+}
+
+function GiftCardCodeRow({ orderId }: { orderId: bigint }) {
+  const { data: code, isLoading } = useGetGiftCardCodeForOrder(orderId);
+  const [copied, setCopied] = useState(false);
+
+  if (isLoading || !code) return null;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="mt-3 p-3 bg-primary/10 border border-primary/30 rounded-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <Gift className="w-3.5 h-3.5 text-primary" />
+        <span className="font-mono text-xs text-primary/60 tracking-widest uppercase">
+          Gift Card Code
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-sm text-primary tracking-widest glow-green-text">
+          {code}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 text-primary/60 hover:text-primary transition-colors"
+          title="Copy gift card code"
+          data-ocid="profile.gift_card.button"
+        >
+          {copied ? (
+            <ClipboardCheck className="w-4 h-4 text-primary" />
+          ) : (
+            <Clipboard className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+      <p className="text-xs font-mono text-primary/30 mt-1">
+        Redeem on your profile page
+      </p>
     </div>
   );
 }
@@ -228,6 +275,7 @@ export default function ProfilePage() {
   const { identity } = useInternetIdentity();
   const isAuthenticated = !!identity;
   const { data: orders = [], isLoading } = useGetMyOrders();
+  const { data: products = [] } = useGetAllProducts();
   const principal = identity?.getPrincipal() ?? null;
   const { data: credit = BigInt(0), isLoading: creditLoading } =
     useGetUserCredit(principal);
@@ -391,47 +439,53 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="space-y-3" data-ocid="profile.orders.list">
-              {orders.map((order, index) => (
-                <Card
-                  key={order.id.toString()}
-                  className="bg-black border-primary/20 hover:border-primary/50 transition-colors"
-                  data-ocid={`profile.orders.item.${index + 1}`}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle className="font-mono text-sm text-foreground">
-                          {order.productTitle}
-                        </CardTitle>
-                        <p className="text-xs text-primary/40 mt-0.5 font-mono">
-                          &gt; ORDER #{order.id.toString()} ·{" "}
-                          {formatDate(order.createdAt)}
-                        </p>
+              {orders.map((order, index) => {
+                const isGiftCard =
+                  products.find((p) => p.id === order.productId)?.isGiftCard ??
+                  false;
+                return (
+                  <Card
+                    key={order.id.toString()}
+                    className="bg-black border-primary/20 hover:border-primary/50 transition-colors"
+                    data-ocid={`profile.orders.item.${index + 1}`}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <CardTitle className="font-mono text-sm text-foreground">
+                            {order.productTitle}
+                          </CardTitle>
+                          <p className="text-xs text-primary/40 mt-0.5 font-mono">
+                            &gt; ORDER #{order.id.toString()} ·{" "}
+                            {formatDate(order.createdAt)}
+                          </p>
+                        </div>
+                        <StatusBadge status={order.status} />
                       </div>
-                      <StatusBadge status={order.status} />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs font-mono">
-                      <span className="text-primary/40">
-                        PRICE:{" "}
-                        <span className="text-primary font-bold">
-                          £{(Number(order.productPrice) / 100).toFixed(2)}
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs font-mono">
+                        <span className="text-primary/40">
+                          PRICE:{" "}
+                          <span className="text-primary font-bold">
+                            £{(Number(order.productPrice) / 100).toFixed(2)}
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-primary/40">
-                        PAYMENT:{" "}
-                        <span className="text-primary/80">
-                          {getPaymentMethodLabel(order.paymentMethod)}
+                        <span className="text-primary/40">
+                          PAYMENT:{" "}
+                          <span className="text-primary/80">
+                            {getPaymentMethodLabel(order.paymentMethod)}
+                          </span>
                         </span>
-                      </span>
-                    </div>
-                    {order.status.__kind__ === "accepted" && (
-                      <AccountDetailsRow orderId={order.id} />
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                      </div>
+                      {isGiftCard && <GiftCardCodeRow orderId={order.id} />}
+                      {!isGiftCard && order.status.__kind__ === "accepted" && (
+                        <AccountDetailsRow orderId={order.id} />
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

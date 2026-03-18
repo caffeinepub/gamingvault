@@ -37,27 +37,12 @@ module {
     };
   };
 
-  // Auto-register any non-anonymous principal as #user if not already registered.
-  // This ensures users who skip the initialize flow can still use the app.
-  public func ensureRegistered(state : AccessControlState, caller : Principal) {
-    if (caller.isAnonymous()) { return };
-    switch (state.userRoles.get(caller)) {
-      case (?_) {}; // already registered
-      case (null) {
-        state.userRoles.add(caller, #user);
-      };
-    };
-  };
-
   public func getUserRole(state : AccessControlState, caller : Principal) : UserRole {
     if (caller.isAnonymous()) { return #guest };
     switch (state.userRoles.get(caller)) {
       case (?role) { role };
       case (null) {
-        // Auto-register as user instead of trapping - allows users who haven't
-        // gone through the initialize flow to still access user-level features.
-        state.userRoles.add(caller, #user);
-        #user;
+        Runtime.trap("User is not registered");
       };
     };
   };

@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "@tanstack/react-router";
 import { CheckCircle, Clock, Eye, ShoppingBag, XCircle } from "lucide-react";
 import { useState } from "react";
-import type { Order } from "../backend.d";
+import type { Order } from "../backend";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useGetMyOrders, useGetOrderAccountDetails } from "../hooks/useQueries";
 

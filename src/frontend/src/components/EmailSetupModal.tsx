@@ -57,7 +57,7 @@ export default function EmailSetupModal() {
     }
     setError("");
     try {
-      await saveContact.mutateAsync(trimmed);
+      await saveContact.mutateAsync({ email: trimmed });
       toast.success("Email saved successfully!");
       setOpen(false);
     } catch {

@@ -7,9 +7,31 @@ import type {
   Order,
   PaymentMethod,
   Product,
-} from "../backend.d";
+} from "../backend";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
+
+// New types added in latest backend version (not yet in generated backend.ts)
+export type CreditReason =
+  | { __kind__: "manualRefund"; manualRefund: null }
+  | { __kind__: "compensation"; compensation: null }
+  | { __kind__: "promoPayment"; promoPayment: null }
+  | { __kind__: "other"; other: string };
+
+export interface RegisteredUser {
+  principal: import("@icp-sdk/core/principal").Principal;
+  name: string;
+  email?: string;
+  playerId?: string;
+}
+
+export interface CreditAdjustment {
+  amount: bigint;
+  reason: CreditReason;
+  notes: string;
+  isPromoPayment: boolean;
+  createdAt: bigint;
+}
 
 export function useGetAllProducts() {
   const { actor, isFetching } = useActor();
@@ -70,7 +92,6 @@ export function useGetMyContactDetails() {
       try {
         return await actor.getBuyerContactDetails(identity.getPrincipal());
       } catch {
-        // Return null for new users who haven't saved contact details yet.
         return null;
       }
     },
@@ -122,9 +143,21 @@ export function usePlaceOrder() {
     mutationFn: async ({
       productId,
       paymentMethod,
-    }: { productId: bigint; paymentMethod: PaymentMethod }) => {
+      buyerAnswer,
+      creditUsed,
+    }: {
+      productId: bigint;
+      paymentMethod: PaymentMethod;
+      buyerAnswer?: string;
+      creditUsed?: bigint;
+    }) => {
       if (!actor) throw new Error("Not connected");
-      return actor.placeOrder(productId, paymentMethod);
+      return (actor as any).placeOrder(
+        productId,
+        paymentMethod,
+        buyerAnswer ?? null,
+        creditUsed ?? BigInt(0),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myOrders"] });
@@ -143,6 +176,7 @@ export function useAddProduct() {
       accountDetails,
       isGiftCard,
       giftCardValue,
+      customQuestion,
     }: {
       title: string;
       description: string;
@@ -150,15 +184,17 @@ export function useAddProduct() {
       accountDetails: string;
       isGiftCard?: boolean;
       giftCardValue?: bigint;
+      customQuestion?: string;
     }) => {
       if (!actor) throw new Error("Not connected");
-      return actor.addProduct(
+      return (actor as any).addProduct(
         title,
         description,
         price,
         accountDetails,
         isGiftCard ?? null,
         giftCardValue ?? null,
+        customQuestion ?? null,
       );
     },
     onSuccess: () => {
@@ -179,6 +215,7 @@ export function useEditProduct() {
       accountDetails,
       isGiftCard,
       giftCardValue,
+      customQuestion,
     }: {
       id: bigint;
       title: string;
@@ -187,9 +224,10 @@ export function useEditProduct() {
       accountDetails: string;
       isGiftCard?: boolean;
       giftCardValue?: bigint;
+      customQuestion?: string;
     }) => {
       if (!actor) throw new Error("Not connected");
-      return actor.editProduct(
+      return (actor as any).editProduct(
         id,
         title,
         description,
@@ -197,6 +235,7 @@ export function useEditProduct() {
         accountDetails,
         isGiftCard ?? null,
         giftCardValue ?? null,
+        customQuestion ?? null,
       );
     },
     onSuccess: () => {
@@ -251,9 +290,12 @@ export function useSaveBuyerContact() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (email: string | null) => {
+    mutationFn: async ({
+      email,
+      playerId,
+    }: { email: string | null; playerId?: string | null }) => {
       if (!actor) throw new Error("Not connected");
-      return actor.saveBuyerContactDetails(email);
+      return (actor as any).saveBuyerContactDetails(email, playerId ?? null);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["myContact"] });
@@ -372,5 +414,84 @@ export function useDeleteCoupon() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["coupons"] });
     },
+  });
+}
+
+export function useGetGiftCardCodeForOrder(orderId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<string | null>({
+    queryKey: ["giftCardCodeForOrder", orderId?.toString()],
+    queryFn: async () => {
+      if (!actor || orderId === null) return null;
+      try {
+        return await actor.getGiftCardCodeForOrder(orderId);
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching && orderId !== null,
+    retry: false,
+  });
+}
+
+// ---- CREDIT HOOKS ----
+
+export function useGetAllRegisteredUsers() {
+  const { actor, isFetching } = useActor();
+  return useQuery<RegisteredUser[]>({
+    queryKey: ["allRegisteredUsers"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return (actor as any).getAllRegisteredUsers() as Promise<
+        RegisteredUser[]
+      >;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddCreditToUser() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      targetUser,
+      amount,
+      reason,
+      notes,
+      isPromoPayment,
+    }: {
+      targetUser: Principal;
+      amount: bigint;
+      reason: CreditReason;
+      notes: string;
+      isPromoPayment: boolean;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return (actor as any).addCreditToUser(
+        targetUser,
+        amount,
+        reason,
+        notes,
+        isPromoPayment,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userCredit"] });
+    },
+  });
+}
+
+export function useGetCreditAdjustments(userPrincipal: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<CreditAdjustment[]>({
+    queryKey: ["creditAdjustments", userPrincipal?.toString()],
+    queryFn: async () => {
+      if (!actor || !userPrincipal) return [];
+      return (actor as any).getCreditAdjustments(userPrincipal) as Promise<
+        CreditAdjustment[]
+      >;
+    },
+    enabled: !!actor && !isFetching && !!userPrincipal,
   });
 }

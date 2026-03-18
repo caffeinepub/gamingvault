@@ -7,6 +7,16 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
+export interface Product {
+    id: ProductId;
+    title: string;
+    createdAt: Timestamp;
+    isGiftCard: boolean;
+    description: string;
+    giftCardValue: bigint;
+    price: bigint;
+    accountDetails: string;
+}
 export type Timestamp = bigint;
 export type PaymentMethod = {
     __kind__: "amazon_gift_card";
@@ -24,10 +34,24 @@ export type PaymentMethod = {
     __kind__: "bitcoin";
     bitcoin: ClientAddress;
 };
+export interface Coupon {
+    active: boolean;
+    value: bigint;
+    code: string;
+    createdAt: Timestamp;
+    discountType: DiscountType;
+}
 export interface BuyerContactDetails {
     email?: string;
 }
 export type PayPalEmail = string;
+export interface GiftCardCode {
+    value: bigint;
+    code: string;
+    redeemed: boolean;
+    orderId: OrderId;
+    buyerPrincipal: Principal;
+}
 export type AmazonGiftCardCode = string;
 export interface Order {
     id: OrderId;
@@ -53,15 +77,14 @@ export type OrderStatus = {
 export type NexusBankId = bigint;
 export type EthereumWalletAddress = string;
 export type ProductId = bigint;
-export interface Product {
-    id: ProductId;
-    title: string;
-    createdAt: Timestamp;
-    description: string;
-    price: bigint;
-    accountDetails: string;
-}
 export type OrderId = bigint;
+export interface UserProfile {
+    name: string;
+}
+export enum DiscountType {
+    fixed = "fixed",
+    percentage = "percentage"
+}
 export enum UserRole {
     admin = "admin",
     user = "user",
@@ -69,25 +92,36 @@ export enum UserRole {
 }
 export interface backendInterface {
     acceptOrder(orderId: OrderId): Promise<void>;
-    addProduct(title: string, description: string, price: bigint, accountDetails: string): Promise<ProductId>;
+    addCoupon(code: string, discountType: DiscountType, value: bigint): Promise<void>;
+    addProduct(title: string, description: string, price: bigint, accountDetails: string, isGiftCard: boolean | null, giftCardValue: bigint | null): Promise<ProductId>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     declineOrder(orderId: OrderId): Promise<void>;
+    deleteCoupon(code: string): Promise<void>;
     deleteProduct(id: ProductId): Promise<void>;
-    editProduct(id: ProductId, title: string, description: string, price: bigint, accountDetails: string): Promise<void>;
+    editProduct(id: ProductId, title: string, description: string, price: bigint, accountDetails: string, isGiftCard: boolean | null, giftCardValue: bigint | null): Promise<void>;
+    generateGiftCardCode(orderId: OrderId): Promise<string>;
+    getAllCoupons(): Promise<Array<Coupon>>;
+    getAllGiftCardCodes(): Promise<Array<GiftCardCode>>;
     getAllOrders(): Promise<Array<Order>>;
     getAllProducts(): Promise<Array<Product>>;
     getBuyerContactDetails(buyer: Principal): Promise<BuyerContactDetails>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getGiftCardCodeForOrder(orderId: OrderId): Promise<string>;
     getOrder(orderId: OrderId): Promise<Order>;
     getOrderAccountDetails(orderId: OrderId): Promise<string>;
     getOrderBuyerContact(orderId: OrderId): Promise<BuyerContactDetails>;
     getOrdersByBuyer(buyer: Principal): Promise<Array<Order>>;
     getPaymentInstructions(method: string): Promise<string>;
     getProduct(id: ProductId): Promise<Product>;
+    getUserCredit(user: Principal): Promise<bigint>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     placeOrder(productId: ProductId, paymentMethod: PaymentMethod): Promise<OrderId>;
+    redeemGiftCardCode(code: string): Promise<bigint>;
     registerStaff(passcode: string): Promise<void>;
     saveBuyerContactDetails(email: string | null): Promise<void>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
     setPaymentInstructions(method: string, instructions: string): Promise<void>;
-    _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
+    validateCoupon(code: string): Promise<Coupon | null>;
 }

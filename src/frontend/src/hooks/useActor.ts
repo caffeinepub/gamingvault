@@ -26,13 +26,22 @@ export function useActor() {
       };
 
       const actor = await createActorWithConfig(actorOptions);
-      const adminToken = getSecretParameter("caffeineAdminToken") || "";
-      await actor._initializeAccessControlWithSecret(adminToken);
+      // Attempt to initialize admin access control, but never let this
+      // failure block the actor from being returned -- backend will
+      // reject privileged calls with a proper error instead.
+      try {
+        const adminToken = getSecretParameter("caffeineAdminToken") || "";
+        await actor._initializeAccessControlWithSecret(adminToken);
+      } catch (e) {
+        console.warn("Access control init failed (non-fatal):", e);
+      }
       return actor;
     },
     // Only refetch when identity changes
     staleTime: Number.POSITIVE_INFINITY,
-    // This will cause the actor to be recreated when the identity changes
+    // Retry on failure so transient network issues don't leave actor null
+    retry: 3,
+    retryDelay: 1000,
     enabled: true,
   });
 

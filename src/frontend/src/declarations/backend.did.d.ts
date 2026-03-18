@@ -13,7 +13,23 @@ import type { Principal } from '@icp-sdk/core/principal';
 export type AmazonGiftCardCode = string;
 export interface BuyerContactDetails { 'email' : [] | [string] }
 export type ClientAddress = string;
+export interface Coupon {
+  'active' : boolean,
+  'value' : bigint,
+  'code' : string,
+  'createdAt' : Timestamp,
+  'discountType' : DiscountType,
+}
+export type DiscountType = { 'fixed' : null } |
+  { 'percentage' : null };
 export type EthereumWalletAddress = string;
+export interface GiftCardCode {
+  'value' : bigint,
+  'code' : string,
+  'redeemed' : boolean,
+  'orderId' : OrderId,
+  'buyerPrincipal' : Principal,
+}
 export type NexusBankId = bigint;
 export interface Order {
   'id' : OrderId,
@@ -39,41 +55,59 @@ export interface Product {
   'id' : ProductId,
   'title' : string,
   'createdAt' : Timestamp,
+  'isGiftCard' : boolean,
   'description' : string,
+  'giftCardValue' : bigint,
   'price' : bigint,
   'accountDetails' : string,
 }
 export type ProductId = bigint;
 export type Timestamp = bigint;
+export interface UserProfile { 'name' : string }
 export type UserRole = { 'admin' : null } |
   { 'user' : null } |
   { 'guest' : null };
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'acceptOrder' : ActorMethod<[OrderId], undefined>,
-  'addProduct' : ActorMethod<[string, string, bigint, string], ProductId>,
+  'addCoupon' : ActorMethod<[string, DiscountType, bigint], undefined>,
+  'addProduct' : ActorMethod<
+    [string, string, bigint, string, [] | [boolean], [] | [bigint]],
+    ProductId
+  >,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
   'declineOrder' : ActorMethod<[OrderId], undefined>,
+  'deleteCoupon' : ActorMethod<[string], undefined>,
   'deleteProduct' : ActorMethod<[ProductId], undefined>,
   'editProduct' : ActorMethod<
-    [ProductId, string, string, bigint, string],
+    [ProductId, string, string, bigint, string, [] | [boolean], [] | [bigint]],
     undefined
   >,
+  'generateGiftCardCode' : ActorMethod<[OrderId], string>,
+  'getAllCoupons' : ActorMethod<[], Array<Coupon>>,
+  'getAllGiftCardCodes' : ActorMethod<[], Array<GiftCardCode>>,
   'getAllOrders' : ActorMethod<[], Array<Order>>,
   'getAllProducts' : ActorMethod<[], Array<Product>>,
   'getBuyerContactDetails' : ActorMethod<[Principal], BuyerContactDetails>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getGiftCardCodeForOrder' : ActorMethod<[OrderId], string>,
   'getOrder' : ActorMethod<[OrderId], Order>,
   'getOrderAccountDetails' : ActorMethod<[OrderId], string>,
   'getOrderBuyerContact' : ActorMethod<[OrderId], BuyerContactDetails>,
   'getOrdersByBuyer' : ActorMethod<[Principal], Array<Order>>,
   'getPaymentInstructions' : ActorMethod<[string], string>,
   'getProduct' : ActorMethod<[ProductId], Product>,
+  'getUserCredit' : ActorMethod<[Principal], bigint>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'placeOrder' : ActorMethod<[ProductId, PaymentMethod], OrderId>,
+  'redeemGiftCardCode' : ActorMethod<[string], bigint>,
   'registerStaff' : ActorMethod<[string], undefined>,
   'saveBuyerContactDetails' : ActorMethod<[[] | [string]], undefined>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
   'setPaymentInstructions' : ActorMethod<[string, string], undefined>,
+  'validateCoupon' : ActorMethod<[string], [] | [Coupon]>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

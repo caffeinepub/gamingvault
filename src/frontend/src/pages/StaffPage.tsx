@@ -1,8 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +21,7 @@ import {
   Copy,
   CreditCard,
   Edit2,
+  Gift,
   Link2,
   Loader2,
   Lock,
@@ -20,6 +29,7 @@ import {
   Plus,
   ShieldCheck,
   ShoppingBag,
+  Tag,
   Trash2,
   User,
   XCircle,
@@ -27,20 +37,25 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Order, Product } from "../backend.d";
+import { DiscountType } from "../backend.d";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { usePatreonUrlEditor } from "../hooks/usePatreonUrl";
 import {
   useAcceptOrder,
+  useAddCoupon,
   useAddProduct,
   useDeclineOrder,
+  useDeleteCoupon,
   useDeleteProduct,
   useEditProduct,
+  useGetAllCoupons,
   useGetAllOrders,
   useGetAllProducts,
   useGetPaymentInstructions,
   useSetPaymentInstructions,
 } from "../hooks/useQueries";
+import { getBuyerQuestion, setBuyerQuestion } from "../utils/buyerQuestions";
 
 const STAFF_CODE = "2006";
 const SKELETONS_3 = ["a", "b", "c"];
@@ -58,18 +73,41 @@ function formatDate(ts: bigint): string {
 }
 
 function getPaymentMethodLabel(pm: Order["paymentMethod"]): string {
+  const stripNote = (val: string) => val.split(" | NOTE: ")[0];
   switch (pm.__kind__) {
     case "bitcoin":
-      return `Bitcoin: ${pm.bitcoin}`;
+      return `Bitcoin: ${stripNote(pm.bitcoin)}`;
     case "ethereum":
-      return `Ethereum: ${pm.ethereum}`;
+      return `Ethereum: ${stripNote(pm.ethereum)}`;
     case "amazon_gift_card":
-      return `Amazon Gift Card: ${pm.amazon_gift_card}`;
+      return `Amazon Gift Card: ${stripNote(pm.amazon_gift_card)}`;
     case "paypal":
-      return `PayPal: ${pm.paypal}`;
+      return `PayPal: ${stripNote(pm.paypal)}`;
     case "nexus_bank":
       return `Nexus Bank ID: ${pm.nexus_bank.toString()}`;
   }
+}
+
+function getBuyerNote(pm: Order["paymentMethod"]): string | null {
+  let raw = "";
+  switch (pm.__kind__) {
+    case "bitcoin":
+      raw = pm.bitcoin;
+      break;
+    case "ethereum":
+      raw = pm.ethereum;
+      break;
+    case "amazon_gift_card":
+      raw = pm.amazon_gift_card;
+      break;
+    case "paypal":
+      raw = pm.paypal;
+      break;
+    default:
+      return null;
+  }
+  const parts = raw.split(" | NOTE: ");
+  return parts.length > 1 ? parts.slice(1).join(" | NOTE: ") : null;
 }
 
 function StatusBadge({ status }: { status: Order["status"] }) {
@@ -99,14 +137,12 @@ function StatusBadge({ status }: { status: Order["status"] }) {
 function PasscodeScreen({ onUnlock }: { onUnlock: () => void }) {
   const { identity, login, isInitializing, isLoggingIn } =
     useInternetIdentity();
-  const { actor, isFetching: actorFetching } = useActor();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [registering, setRegistering] = useState(false);
 
   const isAuthenticated = !!identity;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (code !== STAFF_CODE) {
@@ -114,21 +150,7 @@ function PasscodeScreen({ onUnlock }: { onUnlock: () => void }) {
       setCode("");
       return;
     }
-    if (!actor) {
-      setError("Actor not ready. Please wait a moment and try again.");
-      return;
-    }
-    setRegistering(true);
-    try {
-      await (actor as any).registerStaff(code);
-      onUnlock();
-    } catch (err: any) {
-      setError(
-        err?.message || "Failed to register as staff. Please try again.",
-      );
-    } finally {
-      setRegistering(false);
-    }
+    onUnlock();
   };
 
   return (
@@ -208,20 +230,10 @@ function PasscodeScreen({ onUnlock }: { onUnlock: () => void }) {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={registering || actorFetching}
                 data-ocid="staff.passcode.submit_button"
               >
-                {registering ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4 mr-2" />
-                    Unlock Panel
-                  </>
-                )}
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                Unlock Panel
               </Button>
             </form>
           )}
@@ -249,6 +261,19 @@ function ProductForm({
     editProduct?.accountDetails ?? "",
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const existingQuestion = editProduct ? getBuyerQuestion(editProduct.id) : "";
+  const [askBuyerQuestion, setAskBuyerQuestion] = useState(!!existingQuestion);
+  const [buyerQuestion, setBuyerQuestionState] = useState(existingQuestion);
+
+  // Gift card fields
+  const [isGiftCard, setIsGiftCard] = useState(
+    editProduct?.isGiftCard ?? false,
+  );
+  const [giftCardValueStr, setGiftCardValueStr] = useState(
+    editProduct && editProduct.giftCardValue > BigInt(0)
+      ? (Number(editProduct.giftCardValue) / 100).toFixed(2)
+      : "",
+  );
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -260,8 +285,16 @@ function ProductForm({
       Number.parseFloat(priceStr) <= 0
     )
       e.price = "Enter a valid price";
-    if (!accountDetails.trim())
+    if (!isGiftCard && !accountDetails.trim())
       e.accountDetails = "Account details are required";
+    if (isGiftCard) {
+      if (
+        !giftCardValueStr.trim() ||
+        Number.isNaN(Number.parseFloat(giftCardValueStr)) ||
+        Number.parseFloat(giftCardValueStr) <= 0
+      )
+        e.giftCardValue = "Enter a valid credit value";
+    }
     return e;
   };
 
@@ -273,6 +306,9 @@ function ProductForm({
       return;
     }
     const priceCents = BigInt(Math.round(Number.parseFloat(priceStr) * 100));
+    const gcValueCents = isGiftCard
+      ? BigInt(Math.round(Number.parseFloat(giftCardValueStr) * 100))
+      : BigInt(0);
     try {
       if (editProduct) {
         await editProductMutation.mutateAsync({
@@ -280,16 +316,25 @@ function ProductForm({
           title: title.trim(),
           description: description.trim(),
           price: priceCents,
-          accountDetails: accountDetails.trim(),
+          accountDetails: isGiftCard ? "[GIFT CARD]" : accountDetails.trim(),
+          isGiftCard,
+          giftCardValue: gcValueCents,
         });
+        setBuyerQuestion(editProduct.id, askBuyerQuestion ? buyerQuestion : "");
         toast.success("Product updated!");
       } else {
-        await addProduct.mutateAsync({
+        const newId = await addProduct.mutateAsync({
           title: title.trim(),
           description: description.trim(),
           price: priceCents,
-          accountDetails: accountDetails.trim(),
+          accountDetails: isGiftCard ? "[GIFT CARD]" : accountDetails.trim(),
+          isGiftCard,
+          giftCardValue: gcValueCents,
         });
+        setBuyerQuestion(
+          newId as bigint,
+          askBuyerQuestion ? buyerQuestion : "",
+        );
         toast.success("Product added!");
       }
       onDone();
@@ -371,31 +416,125 @@ function ProductForm({
           </p>
         )}
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="prod-details">
-          Account Details{" "}
-          <span className="text-muted-foreground text-xs">
-            (sent to buyer after acceptance)
-          </span>
-        </Label>
-        <Textarea
-          id="prod-details"
-          value={accountDetails}
-          onChange={(e) => {
-            setAccountDetails(e.target.value);
-            setErrors((p) => ({ ...p, accountDetails: "" }));
-          }}
-          placeholder="Username, password, email, etc."
-          rows={4}
-          data-ocid="staff.product.account_details.textarea"
-        />
-        {errors.accountDetails && (
-          <p
-            className="text-xs text-destructive"
-            data-ocid="staff.product.account_details.error_state"
+
+      {/* Gift Card Section */}
+      <div className="space-y-3 rounded-lg border border-border bg-secondary/20 p-4">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="is-gift-card"
+            checked={isGiftCard}
+            onCheckedChange={(v) => {
+              setIsGiftCard(!!v);
+              setErrors((p) => ({
+                ...p,
+                giftCardValue: "",
+                accountDetails: "",
+              }));
+            }}
+            data-ocid="staff.product.gift_card.checkbox"
+          />
+          <Label
+            htmlFor="is-gift-card"
+            className="cursor-pointer text-sm flex items-center gap-1.5"
           >
-            {errors.accountDetails}
-          </p>
+            <Gift className="w-3.5 h-3.5 text-primary" />
+            This is a gift card
+          </Label>
+        </div>
+        {isGiftCard && (
+          <div className="space-y-1.5 pl-7">
+            <Label
+              htmlFor="gift-card-value"
+              className="text-xs text-muted-foreground"
+            >
+              Credit Value (£) — added to buyer's account balance when redeemed
+            </Label>
+            <Input
+              id="gift-card-value"
+              value={giftCardValueStr}
+              onChange={(e) => {
+                setGiftCardValueStr(e.target.value);
+                setErrors((p) => ({ ...p, giftCardValue: "" }));
+              }}
+              placeholder="e.g. 10.00"
+              type="number"
+              step="0.01"
+              min="0"
+              data-ocid="staff.product.gift_card_value.input"
+            />
+            {errors.giftCardValue && (
+              <p
+                className="text-xs text-destructive"
+                data-ocid="staff.product.gift_card_value.error_state"
+              >
+                {errors.giftCardValue}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {!isGiftCard && (
+        <div className="space-y-1.5">
+          <Label htmlFor="prod-details">
+            Account Details{" "}
+            <span className="text-muted-foreground text-xs">
+              (sent to buyer after acceptance)
+            </span>
+          </Label>
+          <Textarea
+            id="prod-details"
+            value={accountDetails}
+            onChange={(e) => {
+              setAccountDetails(e.target.value);
+              setErrors((p) => ({ ...p, accountDetails: "" }));
+            }}
+            placeholder="Username, password, email, etc."
+            rows={4}
+            data-ocid="staff.product.account_details.textarea"
+          />
+          {errors.accountDetails && (
+            <p
+              className="text-xs text-destructive"
+              data-ocid="staff.product.account_details.error_state"
+            >
+              {errors.accountDetails}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-3 rounded-lg border border-border bg-secondary/20 p-4">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            id="ask-buyer-question"
+            checked={askBuyerQuestion}
+            onCheckedChange={(v) => setAskBuyerQuestion(!!v)}
+            data-ocid="staff.product.ask_question.checkbox"
+          />
+          <Label
+            htmlFor="ask-buyer-question"
+            className="cursor-pointer text-sm"
+          >
+            Ask buyer a question before purchase
+          </Label>
+        </div>
+        {askBuyerQuestion && (
+          <div className="space-y-1.5 pl-7">
+            <Label
+              htmlFor="buyer-question-text"
+              className="text-xs text-muted-foreground"
+            >
+              Question to ask buyer at checkout
+            </Label>
+            <Input
+              id="buyer-question-text"
+              value={buyerQuestion}
+              onChange={(e) => setBuyerQuestionState(e.target.value)}
+              placeholder="e.g. Enter the name for your account"
+              data-ocid="staff.product.question.input"
+            />
+          </div>
         )}
       </div>
       <div className="flex gap-2 justify-end">
@@ -516,10 +655,22 @@ function ProductsTab() {
                       <Badge className="bg-primary/20 text-primary border-primary/40 flex-shrink-0">
                         {formatPrice(p.price)}
                       </Badge>
+                      {p.isGiftCard && (
+                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/40 flex-shrink-0 gap-1">
+                          <Gift className="w-3 h-3" />
+                          Gift Card
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground line-clamp-2">
                       {p.description}
                     </p>
+                    {p.isGiftCard && p.giftCardValue > BigInt(0) && (
+                      <p className="text-xs text-yellow-400 mt-1">
+                        Credit value: £
+                        {(Number(p.giftCardValue) / 100).toFixed(2)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-1.5 flex-shrink-0">
                     <Button
@@ -627,6 +778,14 @@ function OrderRow({
             </span>
           </div>
         </div>
+        {getBuyerNote(order.paymentMethod) && (
+          <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <span className="font-semibold text-primary">Buyer's Answer: </span>
+            <span className="text-foreground">
+              {getBuyerNote(order.paymentMethod)}
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {order.status.__kind__ === "pending" && (
@@ -1001,6 +1160,247 @@ function PatreonSettingsTab() {
   );
 }
 
+// ---- COUPONS TAB ----
+function CouponsTab() {
+  const { data: coupons = [], isLoading } = useGetAllCoupons();
+  const addCoupon = useAddCoupon();
+  const deleteCoupon = useDeleteCoupon();
+
+  const [code, setCode] = useState("");
+  const [discountType, setDiscountType] = useState<DiscountType>(
+    DiscountType.fixed,
+  );
+  const [valueStr, setValueStr] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const isPercentage = discountType === DiscountType.percentage;
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    if (!code.trim()) errs.code = "Code is required";
+    const numVal = Number.parseFloat(valueStr);
+    if (
+      !valueStr.trim() ||
+      Number.isNaN(numVal) ||
+      numVal <= 0 ||
+      (isPercentage && numVal > 100)
+    ) {
+      errs.value = isPercentage
+        ? "Enter a percentage between 1 and 100"
+        : "Enter a valid amount";
+    }
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+    setErrors({});
+    const bigValue = isPercentage
+      ? BigInt(Math.round(numVal))
+      : BigInt(Math.round(numVal * 100));
+    try {
+      await addCoupon.mutateAsync({
+        code: code.trim().toUpperCase(),
+        discountType,
+        value: bigValue,
+      });
+      toast.success("Coupon created!");
+      setCode("");
+      setValueStr("");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to create coupon");
+    }
+  };
+
+  const handleDelete = async (couponCode: string) => {
+    if (!confirm(`Delete coupon ${couponCode}?`)) return;
+    try {
+      await deleteCoupon.mutateAsync(couponCode);
+      toast.success("Coupon deleted");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete coupon");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="font-display text-xl font-semibold">Coupons</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Create discount coupon codes for buyers to use at checkout.
+        </p>
+      </div>
+
+      {/* Create coupon form */}
+      <Card className="bg-card/60 border-primary/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="font-mono text-sm text-primary uppercase tracking-wider flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            New Coupon
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleAdd} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="coupon-code">Coupon Code</Label>
+                <Input
+                  id="coupon-code"
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value.toUpperCase());
+                    setErrors((p) => ({ ...p, code: "" }));
+                  }}
+                  placeholder="e.g. SAVE10"
+                  className="font-mono uppercase"
+                  data-ocid="staff.coupons.input"
+                />
+                {errors.code && (
+                  <p className="text-xs text-destructive">{errors.code}</p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="coupon-type">Discount Type</Label>
+                <Select
+                  value={discountType}
+                  onValueChange={(v) => {
+                    setDiscountType(v as DiscountType);
+                    setValueStr("");
+                    setErrors((p) => ({ ...p, value: "" }));
+                  }}
+                >
+                  <SelectTrigger
+                    id="coupon-type"
+                    data-ocid="staff.coupons.select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DiscountType.fixed}>
+                      Fixed Amount (£)
+                    </SelectItem>
+                    <SelectItem value={DiscountType.percentage}>
+                      Percentage (%)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="coupon-value">
+                  {isPercentage
+                    ? "Percentage (1–100)"
+                    : "Amount (pence, e.g. 500 = £5.00)"}
+                </Label>
+                <Input
+                  id="coupon-value"
+                  value={valueStr}
+                  onChange={(e) => {
+                    setValueStr(e.target.value);
+                    setErrors((p) => ({ ...p, value: "" }));
+                  }}
+                  placeholder={isPercentage ? "e.g. 10" : "e.g. 500"}
+                  type="number"
+                  min="1"
+                  max={isPercentage ? "100" : undefined}
+                  step={isPercentage ? "1" : "1"}
+                  data-ocid="staff.coupons.input"
+                />
+                {errors.value && (
+                  <p className="text-xs text-destructive">{errors.value}</p>
+                )}
+              </div>
+            </div>
+            <Button
+              type="submit"
+              disabled={addCoupon.isPending}
+              className="gap-1.5"
+              data-ocid="staff.coupons.submit_button"
+            >
+              {addCoupon.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Create Coupon
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Coupons list */}
+      {isLoading ? (
+        <div className="space-y-3" data-ocid="staff.coupons.loading_state">
+          {SKELETONS_3.map((k) => (
+            <Skeleton key={k} className="h-16 w-full rounded-lg" />
+          ))}
+        </div>
+      ) : coupons.length === 0 ? (
+        <div
+          className="text-center py-10 text-muted-foreground"
+          data-ocid="staff.coupons.empty_state"
+        >
+          <Tag className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p>No coupons yet. Create your first one above.</p>
+        </div>
+      ) : (
+        <div className="space-y-2" data-ocid="staff.coupons.list">
+          {coupons.map((c, index) => (
+            <Card
+              key={c.code}
+              className="bg-card border-border"
+              data-ocid={`staff.coupons.item.${index + 1}`}
+            >
+              <CardContent className="py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                    <code className="font-mono font-bold text-primary text-sm tracking-wider">
+                      {c.code}
+                    </code>
+                    <Badge
+                      className={
+                        c.discountType === DiscountType.percentage
+                          ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                          : "bg-primary/20 text-primary border-primary/30"
+                      }
+                    >
+                      {c.discountType === DiscountType.percentage
+                        ? `${Number(c.value)}% OFF`
+                        : `£${(Number(c.value) / 100).toFixed(2)} OFF`}
+                    </Badge>
+                    <Badge
+                      className={
+                        c.active
+                          ? "bg-green-500/20 text-green-400 border-green-500/30"
+                          : "bg-red-500/20 text-red-400 border-red-500/30"
+                      }
+                    >
+                      {c.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-destructive hover:text-destructive flex-shrink-0"
+                    onClick={() => handleDelete(c.code)}
+                    data-ocid={`staff.coupons.delete_button.${index + 1}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- STAFF DASHBOARD ----
 function StaffDashboard() {
   return (
@@ -1018,7 +1418,7 @@ function StaffDashboard() {
       </div>
 
       <Tabs defaultValue="orders" className="space-y-6">
-        <TabsList className="bg-card border border-border">
+        <TabsList className="bg-card border border-border flex-wrap h-auto gap-1">
           <TabsTrigger
             value="products"
             className="gap-1.5"
@@ -1044,6 +1444,14 @@ function StaffDashboard() {
             Payment Settings
           </TabsTrigger>
           <TabsTrigger
+            value="coupons"
+            className="gap-1.5"
+            data-ocid="staff.coupons.tab"
+          >
+            <Tag className="w-3.5 h-3.5" />
+            Coupons
+          </TabsTrigger>
+          <TabsTrigger
             value="patreon"
             className="gap-1.5"
             data-ocid="staff.patreon.tab"
@@ -1060,6 +1468,9 @@ function StaffDashboard() {
         </TabsContent>
         <TabsContent value="payments">
           <PaymentSettingsTab />
+        </TabsContent>
+        <TabsContent value="coupons">
+          <CouponsTab />
         </TabsContent>
         <TabsContent value="patreon">
           <PatreonSettingsTab />

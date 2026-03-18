@@ -18,6 +18,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { PaymentMethod } from "../backend.d";
 import PatreonBanner from "../components/PatreonBanner";
+import { useCart } from "../context/CartContext";
 import { useCurrency } from "../hooks/useCurrency";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
@@ -140,6 +141,7 @@ export default function ProductDetailPage() {
   const isAuthenticated = !!identity;
   const placeOrder = usePlaceOrder();
   const { formatPrice } = useCurrency();
+  const { addToCart } = useCart();
 
   const [selectedMethod, setSelectedMethod] =
     useState<ActiveMethodKey>("bitcoin");
@@ -169,6 +171,16 @@ export default function ProductDetailPage() {
     } catch (e: any) {
       toast.error(e?.message || "Failed to place order");
     }
+  };
+
+  const handleAddToCart = () => {
+    if (!product) return;
+    addToCart({
+      productId: product.id,
+      title: product.title,
+      price: product.price,
+      isGiftCard: product.isGiftCard,
+    });
   };
 
   const currentMethod = PAYMENT_METHODS.find((m) => m.key === selectedMethod)!;
@@ -347,6 +359,19 @@ export default function ProductDetailPage() {
               <CardTitle className="font-display">Place Your Order</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Add to Cart button */}
+              <Button
+                variant="outline"
+                onClick={handleAddToCart}
+                className="w-full gap-2 border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/70"
+                data-ocid="cart.add_button"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                Add to Cart
+              </Button>
+
+              <Separator className="bg-border" />
+
               {/* Payment Method Selector */}
               <div>
                 <Label className="text-sm font-medium mb-3 block">

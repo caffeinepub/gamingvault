@@ -8,10 +8,13 @@ import {
 import { useState } from "react";
 import HackingCutscene from "./components/HackingCutscene";
 import Layout from "./components/Layout";
+import { CartProvider } from "./context/CartContext";
 import { CurrencyProvider } from "./hooks/useCurrency";
+import CartPage from "./pages/CartPage";
 import HomePage from "./pages/HomePage";
 import MyOrdersPage from "./pages/MyOrdersPage";
 import ProductDetailPage from "./pages/ProductDetailPage";
+import ProfilePage from "./pages/ProfilePage";
 import StaffPage from "./pages/StaffPage";
 
 const rootRoute = createRootRoute({
@@ -36,17 +39,31 @@ const ordersRoute = createRoute({
   component: MyOrdersPage,
 });
 
+const profileRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/profile",
+  component: ProfilePage,
+});
+
 const staffRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/staff",
   component: StaffPage,
 });
 
+const cartRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cart",
+  component: CartPage,
+});
+
 const routeTree = rootRoute.addChildren([
   homeRoute,
   productRoute,
   ordersRoute,
+  profileRoute,
   staffRoute,
+  cartRoute,
 ]);
 
 const router = createRouter({ routeTree });
@@ -72,8 +89,10 @@ export default function App() {
 
   return (
     <CurrencyProvider>
-      <RouterProvider router={router} />
-      <Toaster richColors position="top-right" />
+      <CartProvider>
+        <RouterProvider router={router} />
+        <Toaster richColors position="top-right" />
+      </CartProvider>
     </CurrencyProvider>
   );
 }

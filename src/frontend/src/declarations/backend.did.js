@@ -9,6 +9,10 @@
 import { IDL } from '@icp-sdk/core/candid';
 
 export const OrderId = IDL.Nat;
+export const DiscountType = IDL.Variant({
+  'fixed' : IDL.Null,
+  'percentage' : IDL.Null,
+});
 export const ProductId = IDL.Nat;
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
@@ -16,6 +20,20 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const Timestamp = IDL.Int;
+export const Coupon = IDL.Record({
+  'active' : IDL.Bool,
+  'value' : IDL.Nat,
+  'code' : IDL.Text,
+  'createdAt' : Timestamp,
+  'discountType' : DiscountType,
+});
+export const GiftCardCode = IDL.Record({
+  'value' : IDL.Nat,
+  'code' : IDL.Text,
+  'redeemed' : IDL.Bool,
+  'orderId' : OrderId,
+  'buyerPrincipal' : IDL.Principal,
+});
 export const OrderStatus = IDL.Variant({
   'pending' : IDL.Null,
   'accepted' : Timestamp,
@@ -47,28 +65,51 @@ export const Product = IDL.Record({
   'id' : ProductId,
   'title' : IDL.Text,
   'createdAt' : Timestamp,
+  'isGiftCard' : IDL.Bool,
   'description' : IDL.Text,
+  'giftCardValue' : IDL.Nat,
   'price' : IDL.Nat,
   'accountDetails' : IDL.Text,
 });
 export const BuyerContactDetails = IDL.Record({ 'email' : IDL.Opt(IDL.Text) });
+export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'acceptOrder' : IDL.Func([OrderId], [], []),
+  'addCoupon' : IDL.Func([IDL.Text, DiscountType, IDL.Nat], [], []),
   'addProduct' : IDL.Func(
-      [IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Nat,
+        IDL.Text,
+        IDL.Opt(IDL.Bool),
+        IDL.Opt(IDL.Nat),
+      ],
       [ProductId],
       [],
     ),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'declineOrder' : IDL.Func([OrderId], [], []),
+  'deleteCoupon' : IDL.Func([IDL.Text], [], []),
   'deleteProduct' : IDL.Func([ProductId], [], []),
   'editProduct' : IDL.Func(
-      [ProductId, IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+      [
+        ProductId,
+        IDL.Text,
+        IDL.Text,
+        IDL.Nat,
+        IDL.Text,
+        IDL.Opt(IDL.Bool),
+        IDL.Opt(IDL.Nat),
+      ],
       [],
       [],
     ),
+  'generateGiftCardCode' : IDL.Func([OrderId], [IDL.Text], []),
+  'getAllCoupons' : IDL.Func([], [IDL.Vec(Coupon)], ['query']),
+  'getAllGiftCardCodes' : IDL.Func([], [IDL.Vec(GiftCardCode)], ['query']),
   'getAllOrders' : IDL.Func([], [IDL.Vec(Order)], ['query']),
   'getAllProducts' : IDL.Func([], [IDL.Vec(Product)], ['query']),
   'getBuyerContactDetails' : IDL.Func(
@@ -76,7 +117,9 @@ export const idlService = IDL.Service({
       [BuyerContactDetails],
       ['query'],
     ),
+  'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getGiftCardCodeForOrder' : IDL.Func([OrderId], [IDL.Text], ['query']),
   'getOrder' : IDL.Func([OrderId], [Order], ['query']),
   'getOrderAccountDetails' : IDL.Func([OrderId], [IDL.Text], ['query']),
   'getOrderBuyerContact' : IDL.Func(
@@ -87,17 +130,30 @@ export const idlService = IDL.Service({
   'getOrdersByBuyer' : IDL.Func([IDL.Principal], [IDL.Vec(Order)], ['query']),
   'getPaymentInstructions' : IDL.Func([IDL.Text], [IDL.Text], ['query']),
   'getProduct' : IDL.Func([ProductId], [Product], ['query']),
+  'getUserCredit' : IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
+  'getUserProfile' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Opt(UserProfile)],
+      ['query'],
+    ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'placeOrder' : IDL.Func([ProductId, PaymentMethod], [OrderId], []),
+  'redeemGiftCardCode' : IDL.Func([IDL.Text], [IDL.Nat], []),
   'registerStaff' : IDL.Func([IDL.Text], [], []),
   'saveBuyerContactDetails' : IDL.Func([IDL.Opt(IDL.Text)], [], []),
+  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
   'setPaymentInstructions' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'validateCoupon' : IDL.Func([IDL.Text], [IDL.Opt(Coupon)], ['query']),
 });
 
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
   const OrderId = IDL.Nat;
+  const DiscountType = IDL.Variant({
+    'fixed' : IDL.Null,
+    'percentage' : IDL.Null,
+  });
   const ProductId = IDL.Nat;
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
@@ -105,6 +161,20 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const Timestamp = IDL.Int;
+  const Coupon = IDL.Record({
+    'active' : IDL.Bool,
+    'value' : IDL.Nat,
+    'code' : IDL.Text,
+    'createdAt' : Timestamp,
+    'discountType' : DiscountType,
+  });
+  const GiftCardCode = IDL.Record({
+    'value' : IDL.Nat,
+    'code' : IDL.Text,
+    'redeemed' : IDL.Bool,
+    'orderId' : OrderId,
+    'buyerPrincipal' : IDL.Principal,
+  });
   const OrderStatus = IDL.Variant({
     'pending' : IDL.Null,
     'accepted' : Timestamp,
@@ -136,28 +206,51 @@ export const idlFactory = ({ IDL }) => {
     'id' : ProductId,
     'title' : IDL.Text,
     'createdAt' : Timestamp,
+    'isGiftCard' : IDL.Bool,
     'description' : IDL.Text,
+    'giftCardValue' : IDL.Nat,
     'price' : IDL.Nat,
     'accountDetails' : IDL.Text,
   });
   const BuyerContactDetails = IDL.Record({ 'email' : IDL.Opt(IDL.Text) });
+  const UserProfile = IDL.Record({ 'name' : IDL.Text });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'acceptOrder' : IDL.Func([OrderId], [], []),
+    'addCoupon' : IDL.Func([IDL.Text, DiscountType, IDL.Nat], [], []),
     'addProduct' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Nat,
+          IDL.Text,
+          IDL.Opt(IDL.Bool),
+          IDL.Opt(IDL.Nat),
+        ],
         [ProductId],
         [],
       ),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'declineOrder' : IDL.Func([OrderId], [], []),
+    'deleteCoupon' : IDL.Func([IDL.Text], [], []),
     'deleteProduct' : IDL.Func([ProductId], [], []),
     'editProduct' : IDL.Func(
-        [ProductId, IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
+        [
+          ProductId,
+          IDL.Text,
+          IDL.Text,
+          IDL.Nat,
+          IDL.Text,
+          IDL.Opt(IDL.Bool),
+          IDL.Opt(IDL.Nat),
+        ],
         [],
         [],
       ),
+    'generateGiftCardCode' : IDL.Func([OrderId], [IDL.Text], []),
+    'getAllCoupons' : IDL.Func([], [IDL.Vec(Coupon)], ['query']),
+    'getAllGiftCardCodes' : IDL.Func([], [IDL.Vec(GiftCardCode)], ['query']),
     'getAllOrders' : IDL.Func([], [IDL.Vec(Order)], ['query']),
     'getAllProducts' : IDL.Func([], [IDL.Vec(Product)], ['query']),
     'getBuyerContactDetails' : IDL.Func(
@@ -165,7 +258,9 @@ export const idlFactory = ({ IDL }) => {
         [BuyerContactDetails],
         ['query'],
       ),
+    'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getGiftCardCodeForOrder' : IDL.Func([OrderId], [IDL.Text], ['query']),
     'getOrder' : IDL.Func([OrderId], [Order], ['query']),
     'getOrderAccountDetails' : IDL.Func([OrderId], [IDL.Text], ['query']),
     'getOrderBuyerContact' : IDL.Func(
@@ -176,11 +271,20 @@ export const idlFactory = ({ IDL }) => {
     'getOrdersByBuyer' : IDL.Func([IDL.Principal], [IDL.Vec(Order)], ['query']),
     'getPaymentInstructions' : IDL.Func([IDL.Text], [IDL.Text], ['query']),
     'getProduct' : IDL.Func([ProductId], [Product], ['query']),
+    'getUserCredit' : IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
+    'getUserProfile' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(UserProfile)],
+        ['query'],
+      ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'placeOrder' : IDL.Func([ProductId, PaymentMethod], [OrderId], []),
+    'redeemGiftCardCode' : IDL.Func([IDL.Text], [IDL.Nat], []),
     'registerStaff' : IDL.Func([IDL.Text], [], []),
     'saveBuyerContactDetails' : IDL.Func([IDL.Opt(IDL.Text)], [], []),
+    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
     'setPaymentInstructions' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'validateCoupon' : IDL.Func([IDL.Text], [IDL.Opt(Coupon)], ['query']),
   });
 };
 

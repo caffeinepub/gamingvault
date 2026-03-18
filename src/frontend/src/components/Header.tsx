@@ -1,7 +1,17 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Loader2, LogIn, LogOut, ShieldCheck, ShoppingBag } from "lucide-react";
+import {
+  Loader2,
+  LogIn,
+  LogOut,
+  ShieldCheck,
+  ShoppingBag,
+  ShoppingCart,
+  User,
+} from "lucide-react";
+import { useCart } from "../context/CartContext";
 import type { Currency } from "../hooks/useCurrency";
 import { useCurrency } from "../hooks/useCurrency";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
@@ -21,6 +31,7 @@ export default function Header() {
   const isLoggingIn = loginStatus === "logging-in";
   const patreonUrl = usePatreonUrl();
   const { currency, setCurrency } = useCurrency();
+  const { cartItems } = useCart();
 
   const handleAuth = async () => {
     if (isAuthenticated) {
@@ -85,18 +96,54 @@ export default function Header() {
             ))}
           </div>
 
+          {/* Cart Button */}
+          <Link to="/cart">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 text-primary hover:text-primary hover:bg-primary/10 relative"
+              data-ocid="cart.link"
+            >
+              <div className="relative">
+                <ShoppingCart className="w-4 h-4" />
+                {cartItems.length > 0 && (
+                  <Badge
+                    className="absolute -top-2.5 -right-2.5 h-4 min-w-4 px-1 text-[10px] bg-primary text-background border-0 rounded-full flex items-center justify-center leading-none"
+                    data-ocid="cart.badge"
+                  >
+                    {cartItems.length}
+                  </Badge>
+                )}
+              </div>
+              <span className="hidden sm:inline">Cart</span>
+            </Button>
+          </Link>
+
           {isAuthenticated && (
-            <Link to="/orders">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2 text-primary hover:text-primary hover:bg-primary/10"
-                data-ocid="orders.link"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span className="hidden sm:inline">My Orders</span>
-              </Button>
-            </Link>
+            <>
+              <Link to="/profile">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-primary hover:text-primary hover:bg-primary/10"
+                  data-ocid="profile.link"
+                >
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">Profile</span>
+                </Button>
+              </Link>
+              <Link to="/orders">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-2 text-primary hover:text-primary hover:bg-primary/10"
+                  data-ocid="orders.link"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span className="hidden sm:inline">My Orders</span>
+                </Button>
+              </Link>
+            </>
           )}
           <Link to="/staff">
             <Button

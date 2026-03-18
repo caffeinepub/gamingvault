@@ -1,6 +1,9 @@
+import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   BuyerContactDetails,
+  Coupon,
+  DiscountType,
   Order,
   PaymentMethod,
   Product,
@@ -133,14 +136,25 @@ export function useAddProduct() {
       description,
       price,
       accountDetails,
+      isGiftCard,
+      giftCardValue,
     }: {
       title: string;
       description: string;
       price: bigint;
       accountDetails: string;
+      isGiftCard?: boolean;
+      giftCardValue?: bigint;
     }) => {
       if (!actor) throw new Error("Not connected");
-      return actor.addProduct(title, description, price, accountDetails);
+      return actor.addProduct(
+        title,
+        description,
+        price,
+        accountDetails,
+        isGiftCard ?? null,
+        giftCardValue ?? null,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -158,15 +172,27 @@ export function useEditProduct() {
       description,
       price,
       accountDetails,
+      isGiftCard,
+      giftCardValue,
     }: {
       id: bigint;
       title: string;
       description: string;
       price: bigint;
       accountDetails: string;
+      isGiftCard?: boolean;
+      giftCardValue?: bigint;
     }) => {
       if (!actor) throw new Error("Not connected");
-      return actor.editProduct(id, title, description, price, accountDetails);
+      return actor.editProduct(
+        id,
+        title,
+        description,
+        price,
+        accountDetails,
+        isGiftCard ?? null,
+        giftCardValue ?? null,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -245,6 +271,101 @@ export function useSetPaymentInstructions() {
       queryClient.invalidateQueries({
         queryKey: ["paymentInstructions", variables.method],
       });
+    },
+  });
+}
+
+export function useGenerateGiftCardCode() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (orderId: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.generateGiftCardCode(orderId);
+    },
+  });
+}
+
+export function useGetUserCredit(userPrincipal: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<bigint>({
+    queryKey: ["userCredit", userPrincipal?.toString()],
+    queryFn: async () => {
+      if (!actor || !userPrincipal) return BigInt(0);
+      return actor.getUserCredit(userPrincipal);
+    },
+    enabled: !!actor && !isFetching && !!userPrincipal,
+  });
+}
+
+export function useRedeemGiftCardCode() {
+  const { actor } = useActor();
+  const { identity } = useInternetIdentity();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (code: string) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.redeemGiftCardCode(code);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["userCredit", identity?.getPrincipal().toString()],
+      });
+    },
+  });
+}
+
+// ---- COUPON HOOKS ----
+
+export function useGetAllCoupons() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Coupon[]>({
+    queryKey: ["coupons"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getAllCoupons();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useValidateCoupon() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (code: string) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.validateCoupon(code);
+    },
+  });
+}
+
+export function useAddCoupon() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      code,
+      discountType,
+      value,
+    }: { code: string; discountType: DiscountType; value: bigint }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.addCoupon(code, discountType, value);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
+    },
+  });
+}
+
+export function useDeleteCoupon() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (code: string) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.deleteCoupon(code);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
     },
   });
 }

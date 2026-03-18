@@ -26,22 +26,20 @@ export function useActor() {
       };
 
       const actor = await createActorWithConfig(actorOptions);
-      // Attempt to initialize admin access control, but never let this
-      // failure block the actor from being returned -- backend will
-      // reject privileged calls with a proper error instead.
+      // Try to initialize access control, but don't fail if it errors.
+      // The backend now auto-registers non-anonymous callers as users on demand.
       try {
         const adminToken = getSecretParameter("caffeineAdminToken") || "";
         await actor._initializeAccessControlWithSecret(adminToken);
-      } catch (e) {
-        console.warn("Access control init failed (non-fatal):", e);
+      } catch {
+        // Silently continue -- the backend will auto-register the user on the
+        // first call that requires user-level access.
       }
       return actor;
     },
     // Only refetch when identity changes
     staleTime: Number.POSITIVE_INFINITY,
-    // Retry on failure so transient network issues don't leave actor null
-    retry: 3,
-    retryDelay: 1000,
+    // This will cause the actor to be recreated when the identity changes
     enabled: true,
   });
 

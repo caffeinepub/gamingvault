@@ -67,7 +67,12 @@ export function useGetMyContactDetails() {
     queryKey: ["myContact", identity?.getPrincipal().toString()],
     queryFn: async () => {
       if (!actor || !identity) return null;
-      return actor.getBuyerContactDetails(identity.getPrincipal());
+      try {
+        return await actor.getBuyerContactDetails(identity.getPrincipal());
+      } catch {
+        // Return null for new users who haven't saved contact details yet.
+        return null;
+      }
     },
     enabled: !!actor && !isFetching && !!identity,
     retry: false,

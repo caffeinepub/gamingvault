@@ -436,7 +436,7 @@ actor {
       Runtime.trap("Unauthorized: Can only view your own contact details");
     };
     switch (buyers.get(buyer)) {
-      case (null) { Runtime.trap("Buyer not found") };
+      case (null) { { email = null } }; // Return empty record for new users
       case (?details) { details };
     };
   };
